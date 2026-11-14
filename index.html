@@ -1,0 +1,2458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#166534" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>SwiftBill POS</title>
+<!--
+  SWIFTBILL POS — single-file Point of Sale + Calculator Billing app.
+  - No server, no build step, no internet needed: open this file in Chrome.
+  - All styling is inline CSS (no CDN) so the app works fully offline.
+  - All data (customers, Khata ledgers, current bill, held bills, history)
+    is stored in the browser's localStorage under the key "swiftbill_pos_v1".
+-->
+<style>
+  /* ============================================================
+     DESIGN TOKENS
+     ============================================================ */
+  :root {
+    --g-dark: #14532d;
+    --g1: #166534;          /* deep forest green */
+    --g2: #15803d;          /* forest green */
+    --g3: #16a34a;          /* action green */
+    --g-soft: #dcfce7;
+    --card: #f8fafc;        /* item cards */
+    --ind: #4f46e5;         /* indigo badges / actions */
+    --ind-soft: #eef2ff;
+    --ink: #0f172a;
+    --ink2: #334155;
+    --muted: #64748b;
+    --line: #e2e8f0;
+    --key: #1e293b;         /* dark keypad keys */
+    --key-hi: #334155;
+    --red: #dc2626;
+    --red-soft: #fee2e2;
+    --amber: #d97706;
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #cbd5e1;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    overscroll-behavior: none;
+  }
+  button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; touch-action: manipulation; }
+  input { font: inherit; color: inherit; }
+  .hidden { display: none !important; }
+
+  /* ============================================================
+     APP SHELL  (mobile first: one column, full viewport height)
+     ============================================================ */
+  #app {
+    height: 100vh;
+    height: 100dvh;
+    max-width: 1280px;
+    margin: 0 auto;
+    background: #f1f5f9;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-areas: "held" "head" "items" "pad";
+    overflow: hidden;
+    box-shadow: 0 0 40px rgba(15, 23, 42, .15);
+  }
+
+  /* ---------- Held bills bar ---------- */
+  .held {
+    grid-area: held;
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    padding-top: max(8px, env(safe-area-inset-top));
+    background: var(--g-dark);
+    overflow-x: auto; scrollbar-width: none;
+    white-space: nowrap;
+  }
+  .held::-webkit-scrollbar { display: none; }
+  .held-label {
+    flex: none; font-size: 11px; font-weight: 800; letter-spacing: .08em;
+    color: #bbf7d0; padding: 6px 4px;
+  }
+  .pill {
+    flex: none; display: inline-flex; align-items: center; gap: 6px;
+    height: 30px; padding: 0 12px; border-radius: 999px;
+    font-size: 12px; font-weight: 700; letter-spacing: .02em;
+    background: rgba(255,255,255,.12); color: #ecfdf5;
+    border: 1px solid rgba(255,255,255,.18);
+  }
+  .pill small { font-weight: 600; opacity: .8; }
+  .pill.active { background: #fff; color: var(--g1); border-color: #fff; }
+  .pill.new { background: var(--ind); border-color: var(--ind); color: #fff; }
+  .pill .x {
+    width: 18px; height: 18px; margin-right: -6px; border-radius: 50%;
+    display: inline-grid; place-items: center; font-size: 12px; line-height: 1;
+    background: rgba(255,255,255,.18);
+  }
+
+  /* ---------- Green POS header ---------- */
+  .hdr {
+    grid-area: head;
+    background: linear-gradient(135deg, var(--g2), var(--g1));
+    color: #fff;
+    padding: 12px 14px 12px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .hdr-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .logo {
+    flex: none; width: 38px; height: 38px; border-radius: 11px;
+    background: #fff; color: var(--g1); font-weight: 900; font-size: 15px;
+    display: grid; place-items: center; letter-spacing: -.03em;
+  }
+  .brand-name { font-weight: 900; font-size: 16px; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .brand-sub { font-size: 11px; opacity: .8; margin-top: 2px; white-space: nowrap; }
+  .net { text-align: right; flex: none; }
+  .net-label { font-size: 10px; font-weight: 800; letter-spacing: .14em; opacity: .85; }
+  .net-val { font-size: 28px; font-weight: 900; line-height: 1.1; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+  .net-sub { font-size: 11px; font-weight: 600; opacity: .9; margin-top: 2px; }
+
+  .hdr-row { display: flex; gap: 8px; align-items: stretch; }
+  .cust {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.22);
+    border-radius: 12px; padding: 7px 10px; text-align: left;
+  }
+  .cust-to { font-size: 10px; font-weight: 800; letter-spacing: .1em; opacity: .75; }
+  .cust-main { min-width: 0; flex: 1; }
+  .cust-name { font-weight: 800; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cust-bal { font-size: 11px; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .icon-btn {
+    flex: none; width: 42px; border-radius: 12px;
+    background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.22);
+    display: grid; place-items: center;
+  }
+  .icon-btn svg, .cust svg { width: 20px; height: 20px; }
+  .icon-btn:active, .cust:active { background: rgba(255,255,255,.25); }
+
+  .mode {
+    flex: none; display: flex; padding: 3px; border-radius: 12px;
+    background: rgba(0,0,0,.18);
+  }
+  .mode button {
+    padding: 0 14px; border-radius: 9px; font-size: 12px; font-weight: 800; letter-spacing: .08em;
+    color: #d1fae5;
+  }
+  .mode button.on { background: #fff; color: var(--g1); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+  .mode button.on.scrap { color: var(--amber); }
+  .paid {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+    background: #fff; color: var(--ink); border-radius: 12px; padding: 0 10px; height: 44px;
+  }
+  .paid label { font-size: 10px; font-weight: 800; letter-spacing: .08em; color: var(--muted); white-space: nowrap; }
+  .paid input {
+    flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
+    font-size: 18px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums;
+  }
+  .paid-cur { font-weight: 800; color: var(--muted); font-size: 13px; }
+
+  /* ---------- Items list ---------- */
+  .items {
+    grid-area: items;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 10px 10px 16px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .empty {
+    margin: auto; text-align: center; color: var(--muted); padding: 20px;
+    font-size: 14px; line-height: 1.5;
+  }
+  .empty b { color: var(--ink2); }
+  .empty .big { font-size: 40px; margin-bottom: 4px; opacity: .6; }
+  .item {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 10px; display: flex; flex-direction: column; gap: 8px;
+    box-shadow: 0 1px 2px rgba(15,23,42,.05);
+    animation: pop .18s ease-out;
+  }
+  @keyframes pop { from { transform: translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .item-top { display: flex; align-items: center; gap: 8px; }
+  .badge {
+    flex: none; width: 26px; height: 26px; border-radius: 8px;
+    background: var(--ind); color: #fff; font-size: 12px; font-weight: 800;
+    display: grid; place-items: center;
+  }
+  .item-name {
+    flex: 1; min-width: 0; border: 1px solid transparent; background: transparent;
+    font-weight: 700; font-size: 15px; padding: 5px 6px; border-radius: 8px; outline: 0;
+  }
+  .item-name:focus { border-color: var(--ind); background: #fff; }
+  .del {
+    flex: none; width: 30px; height: 30px; border-radius: 9px;
+    color: var(--red); background: var(--red-soft); font-size: 16px; font-weight: 800;
+  }
+  .item-bot { display: flex; align-items: center; gap: 8px; }
+  .rate {
+    display: flex; align-items: center; gap: 4px; background: #fff;
+    border: 1px solid var(--line); border-radius: 10px; padding: 0 8px; height: 38px; width: 34%;
+    min-width: 92px;
+  }
+  .rate span { font-size: 10px; font-weight: 800; color: var(--muted); letter-spacing: .06em; }
+  .rate input { width: 100%; min-width: 0; border: 0; outline: 0; font-weight: 700; font-size: 15px; text-align: right; background: transparent; }
+  .rate:focus-within, .qty:focus-within { border-color: var(--ind); }
+  .qty {
+    display: flex; align-items: center; background: #fff; border: 1px solid var(--line);
+    border-radius: 10px; height: 38px; overflow: hidden;
+  }
+  .qty button { width: 34px; height: 100%; font-size: 18px; font-weight: 800; color: var(--ind); background: var(--ind-soft); }
+  .qty button:active { background: #c7d2fe; }
+  .qty input { width: 48px; border: 0; outline: 0; text-align: center; font-weight: 800; font-size: 15px; background: transparent; }
+  .it-total {
+    flex: 1; text-align: right; font-weight: 900; font-size: 17px; color: var(--g2);
+    white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- Bottom pad: notes, display, keypad, actions ---------- */
+  .pad {
+    grid-area: pad;
+    background: #fff;
+    border-top: 1px solid var(--line);
+    padding: 10px 10px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 8px;
+    box-shadow: 0 -6px 20px rgba(15,23,42,.06);
+  }
+  .note-row { display: flex; gap: 8px; }
+  .note-row input {
+    flex: 1; min-width: 0; height: 42px; border: 1px solid var(--line); border-radius: 12px;
+    padding: 0 12px; outline: 0; background: var(--card); font-size: 14px;
+  }
+  .note-row input:focus { border-color: var(--ind); background: #fff; }
+  .hold-btn {
+    flex: none; height: 42px; padding: 0 16px; border-radius: 12px;
+    background: var(--ind-soft); color: var(--ind); font-weight: 800; font-size: 13px; letter-spacing: .06em;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .hold-btn svg { width: 16px; height: 16px; }
+
+  .display {
+    background: var(--ink); color: #fff; border-radius: 12px; padding: 6px 8px 6px 12px;
+    display: flex; align-items: center; gap: 8px; min-height: 52px;
+  }
+  .disp-info { flex: 1; min-width: 0; }
+  .disp-top { display: flex; gap: 8px; align-items: center; }
+  .disp-mode {
+    font-size: 9px; font-weight: 900; letter-spacing: .12em; padding: 2px 6px; border-radius: 5px;
+    background: var(--g3); color: #fff;
+  }
+  .disp-mode.scrap { background: var(--amber); }
+  .disp-hint { font-size: 11px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .disp-val {
+    font-size: 24px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: ltr; color: #4ade80;
+  }
+  .back-btn { flex: none; width: 40px; height: 40px; border-radius: 10px; background: var(--key-hi); display: grid; place-items: center; }
+  .back-btn svg { width: 20px; height: 20px; }
+
+  .keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+  .k {
+    height: 50px; border-radius: 12px; font-size: 21px; font-weight: 800;
+    background: var(--key); color: #fff;
+    box-shadow: 0 3px 0 #020617; transition: transform .05s, box-shadow .05s;
+  }
+  .k:active { transform: translateY(2px); box-shadow: 0 1px 0 #020617; }
+  .k.c   { background: var(--red-soft); color: var(--red); box-shadow: 0 3px 0 #fca5a5; }
+  .k.x   { background: var(--ind); box-shadow: 0 3px 0 #3730a3; }
+  .k.eq  { background: var(--g1); box-shadow: 0 3px 0 #052e16; }
+  .k.add { background: var(--g3); box-shadow: 0 3px 0 #166534; font-size: 16px; letter-spacing: .06em; }
+  .k.c:active { box-shadow: 0 1px 0 #fca5a5; }
+  .k.x:active { box-shadow: 0 1px 0 #3730a3; }
+  .k.eq:active { box-shadow: 0 1px 0 #052e16; }
+  .k.add:active { box-shadow: 0 1px 0 #166534; }
+
+  .actions { display: grid; grid-template-columns: 1fr 1fr 1fr 1.3fr; gap: 7px; }
+  .act {
+    height: 50px; border-radius: 12px; font-size: 11px; font-weight: 900; letter-spacing: .06em;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink2);
+  }
+  .act small { font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 4px; }
+  .act.partial { background: var(--ind); border-color: var(--ind); color: #fff; }
+  .act.partial small { color: #c7d2fe; }
+  .act.final { background: var(--g2); border-color: var(--g2); color: #fff; font-size: 13px; }
+  .act.final small { color: #bbf7d0; }
+  .act:active { filter: brightness(.92); }
+
+  /* Short phones: compress the pad so the item list keeps some room */
+  @media (max-height: 720px) and (max-width: 899px) {
+    .k { height: 42px; font-size: 19px; }
+    .act { height: 44px; }
+    .note-row input, .hold-btn { height: 38px; }
+    .display { min-height: 46px; }
+    .disp-val { font-size: 21px; }
+    .net-val { font-size: 24px; }
+    .hdr { gap: 8px; padding-top: 10px; padding-bottom: 10px; }
+  }
+
+  /* ============================================================
+     TABLET / LAPTOP: two columns — items left, keypad right
+     ============================================================ */
+  @media (min-width: 900px) {
+    body { padding: 0; }
+    #app {
+      grid-template-columns: minmax(0, 1fr) 400px;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      grid-template-areas: "held held" "head pad" "items pad";
+    }
+    .pad { border-top: 0; border-left: 1px solid var(--line); justify-content: flex-end; box-shadow: none; padding: 14px; gap: 10px; }
+    .k { height: 62px; font-size: 24px; }
+    .act { height: 58px; }
+    .hdr { padding: 16px 20px; }
+    .net-val { font-size: 36px; }
+    .items {
+      padding: 16px 20px;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); align-content: start;
+    }
+    .empty { grid-column: 1 / -1; margin-top: 60px; }
+  }
+  @media (min-width: 1280px) { body { padding: 0; } }
+
+  /* ============================================================
+     MODALS, TOAST
+     ============================================================ */
+  .overlay {
+    position: fixed; inset: 0; z-index: 50; background: rgba(15,23,42,.55);
+    display: flex; align-items: flex-end; justify-content: center;
+    animation: fade .15s ease-out;
+  }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  .sheet {
+    width: 100%; max-width: 560px; max-height: 92dvh; background: #fff;
+    border-radius: 20px 20px 0 0; display: flex; flex-direction: column; overflow: hidden;
+    animation: up .2s ease-out;
+  }
+  @keyframes up { from { transform: translateY(30px); } to { transform: none; } }
+  @media (min-width: 640px) {
+    .overlay { align-items: center; padding: 20px; }
+    .sheet { border-radius: 20px; max-height: 88vh; }
+  }
+  .sheet-h {
+    display: flex; align-items: center; gap: 10px; padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .sheet-h h2 { margin: 0; font-size: 17px; font-weight: 900; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sheet-x { width: 34px; height: 34px; border-radius: 10px; background: var(--card); font-size: 18px; font-weight: 800; color: var(--muted); }
+  .sheet-back { width: 34px; height: 34px; border-radius: 10px; background: var(--card); font-size: 18px; font-weight: 800; color: var(--ink2); }
+  .sheet-b { padding: 14px 16px; overflow-y: auto; flex: 1; }
+  .sheet-f { padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); display: flex; gap: 8px; }
+
+  .btn {
+    height: 46px; padding: 0 16px; border-radius: 12px; font-weight: 800; font-size: 14px;
+    background: var(--card); border: 1px solid var(--line); color: var(--ink2);
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn.primary { background: var(--g2); border-color: var(--g2); color: #fff; }
+  .btn.indigo { background: var(--ind); border-color: var(--ind); color: #fff; }
+  .btn.danger { background: var(--red-soft); border-color: #fecaca; color: var(--red); }
+  .btn.grow { flex: 1; }
+  .btn.sm { height: 36px; font-size: 12px; padding: 0 12px; border-radius: 10px; }
+  .btn:active { filter: brightness(.94); }
+
+  .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+  .field label { font-size: 11px; font-weight: 800; letter-spacing: .08em; color: var(--muted); }
+  .field input {
+    height: 46px; border: 1px solid var(--line); border-radius: 12px; padding: 0 12px; outline: 0;
+    font-size: 16px; background: var(--card);
+  }
+  .field input:focus { border-color: var(--ind); background: #fff; }
+  .field .hint { font-size: 12px; color: var(--muted); }
+  .big-input { font-size: 26px !important; font-weight: 800; text-align: right; height: 58px !important; }
+
+  .search {
+    width: 100%; height: 44px; border: 1px solid var(--line); border-radius: 12px; padding: 0 12px 0 38px;
+    outline: 0; background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' fill='none' stroke='%2364748b' stroke-width='2' viewBox='0 0 24 24'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat 12px center;
+    font-size: 15px; margin-bottom: 10px;
+  }
+  .search:focus { border-color: var(--ind); background-color: #fff; }
+
+  .row {
+    display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--card); margin-bottom: 8px; width: 100%; text-align: left;
+  }
+  .row:active { background: #f1f5f9; }
+  .row.sel { border-color: var(--g3); background: #f0fdf4; }
+  .avatar {
+    flex: none; width: 38px; height: 38px; border-radius: 12px; background: var(--ind-soft); color: var(--ind);
+    display: grid; place-items: center; font-weight: 900;
+  }
+  .row-main { flex: 1; min-width: 0; }
+  .row-t { font-weight: 800; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row-s { font-size: 12px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row-r { text-align: right; flex: none; }
+  .amt { font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .recv { color: var(--red); }
+  .pay  { color: var(--g2); }
+  .tag {
+    display: inline-block; font-size: 9px; font-weight: 900; letter-spacing: .08em; padding: 2px 6px; border-radius: 5px;
+    background: var(--g-soft); color: var(--g1);
+  }
+  .tag.scrap { background: #fef3c7; color: #92400e; }
+  .tag.partial { background: var(--ind-soft); color: var(--ind); }
+  .tag.credit { background: var(--red-soft); color: var(--red); }
+  .tag.pay { background: #e0f2fe; color: #0369a1; }
+
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+  .stat-l { font-size: 10px; font-weight: 800; letter-spacing: .08em; color: var(--muted); }
+  .stat-v { font-size: 18px; font-weight: 900; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+  .bal-card {
+    border-radius: 16px; padding: 14px; color: #fff; margin-bottom: 12px;
+    background: linear-gradient(135deg, var(--g2), var(--g1));
+  }
+  .bal-card.recv { background: linear-gradient(135deg, #b91c1c, #7f1d1d); }
+  .bal-l { font-size: 11px; font-weight: 800; letter-spacing: .1em; opacity: .85; }
+  .bal-v { font-size: 30px; font-weight: 900; margin: 2px 0; }
+  .bal-s { font-size: 12px; opacity: .85; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .sec-title { font-size: 11px; font-weight: 900; letter-spacing: .1em; color: var(--muted); margin: 6px 0 8px; }
+
+  table.lines { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.lines th { text-align: left; font-size: 10px; letter-spacing: .08em; color: var(--muted); font-weight: 800; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  table.lines td { padding: 8px 4px; border-bottom: 1px dashed var(--line); vertical-align: top; }
+  table.lines .n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .totals { margin-top: 10px; font-size: 14px; }
+  .totals div { display: flex; justify-content: space-between; padding: 4px 0; }
+  .totals .grand { font-size: 18px; font-weight: 900; color: var(--g1); border-top: 2px solid var(--ink); margin-top: 4px; padding-top: 8px; }
+  .muted { color: var(--muted); }
+  .center { text-align: center; }
+  .confirm-msg { font-size: 15px; line-height: 1.55; color: var(--ink2); }
+  .confirm-msg b { color: var(--ink); }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
+    background: var(--ink); color: #fff; padding: 11px 16px; border-radius: 12px; font-size: 14px; font-weight: 600;
+    opacity: 0; pointer-events: none; transition: all .2s; z-index: 100; max-width: calc(100vw - 32px); text-align: center;
+    box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ============================================================
+     CUSTOMER INVOICE — shared by the on-screen modal and print
+     ============================================================ */
+  .inv { font-size: 13px; color: var(--ink); background: #fff; }
+  .inv-status { margin-bottom: 10px; }
+  .inv-head { text-align: center; padding-bottom: 10px; border-bottom: 2px solid var(--ink); }
+  .inv-shop { font-weight: 900; font-size: 20px; letter-spacing: .06em; color: var(--g1); }
+  .inv-title { font-size: 11px; font-weight: 800; letter-spacing: .26em; color: var(--muted); margin-top: 3px; }
+  .inv-meta { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; padding: 10px 0; border-bottom: 1px dashed #cbd5e1; }
+  .inv-meta div { display: flex; flex-direction: column; min-width: 0; }
+  .inv-meta div:nth-child(even) { text-align: right; }
+  .inv-meta span { font-size: 10px; font-weight: 800; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; }
+  .inv-meta b { font-size: 13px; overflow-wrap: anywhere; }
+  .inv-sec { margin-top: 12px; font-size: 11px; font-weight: 900; letter-spacing: .12em; color: var(--g1); background: var(--g-soft); padding: 5px 8px; border-radius: 6px; }
+  .inv-sec.scrap { color: #92400e; background: #fef3c7; }
+  .inv-t { width: 100%; border-collapse: collapse; margin-top: 2px; }
+  .inv-t th { font-size: 10px; letter-spacing: .06em; text-align: left; color: var(--muted); font-weight: 800; padding: 6px 4px; border-bottom: 1px solid var(--line); text-transform: uppercase; }
+  .inv-t td { padding: 7px 4px; border-bottom: 1px dashed var(--line); vertical-align: top; }
+  .inv-t .n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .inv-t td:first-child, .inv-t th:first-child { width: 22px; }
+  .inv-t tr.neg td { color: var(--red); }
+  .inv-none { text-align: center; color: var(--muted); font-style: italic; }
+  .inv-sum { margin-top: 14px; border: 1.5px solid var(--ink); border-radius: 10px; padding: 8px 12px; font-variant-numeric: tabular-nums; }
+  .inv-sum div { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; }
+  .inv-sum .neg { color: var(--red); }
+  .inv-sum .net { font-weight: 900; font-size: 17px; border-top: 1.5px solid var(--ink); border-bottom: 1.5px solid var(--ink); margin: 5px 0; padding: 7px 0; color: var(--g1); }
+  .inv-sum .due { font-weight: 900; font-size: 15px; }
+  .inv-sum .sm { font-size: 12px; color: var(--muted); }
+  .inv-sum .sm:first-of-type { border-top: 1px dashed var(--line); }
+  .inv-foot { margin-top: 12px; }
+  .inv-count { display: flex; justify-content: space-between; font-size: 12px; padding: 6px 0; border-bottom: 1px dashed #cbd5e1; }
+  .inv-policy { font-size: 11px; color: var(--muted); text-align: center; margin: 10px 0 0; line-height: 1.45; }
+  .inv-sign { display: flex; justify-content: space-between; gap: 30px; margin-top: 34px; }
+  .inv-sign div { flex: 1; border-top: 1px solid var(--ink); text-align: center; font-size: 11px; font-weight: 700; padding-top: 4px; }
+
+  /* ---------- Scrap item cards & list section headings ---------- */
+  .sec-head { display: flex; justify-content: space-between; font-size: 11px; font-weight: 900; letter-spacing: .1em; color: var(--g1); padding: 4px 4px 0; }
+  .sec-head.scrap { color: #b45309; }
+  .item.scrap { background: #fffbeb; border-color: #fde68a; }
+  .item.scrap .badge { background: var(--amber); }
+  .item.scrap .it-total { color: var(--red); }
+  @media (min-width: 900px) { .sec-head { grid-column: 1 / -1; } }
+
+  /* ---------- Product suggestions (above the note field) ---------- */
+  .note-row { position: relative; }
+  .suggest {
+    position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); z-index: 20;
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: 0 -8px 30px rgba(15,23,42,.18); max-height: 280px; overflow-y: auto;
+  }
+  .suggest button {
+    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 11px 12px; text-align: left; border-bottom: 1px solid var(--line); font-size: 14px;
+  }
+  .suggest button:last-child { border-bottom: 0; }
+  .suggest button:active, .suggest button:hover { background: var(--ind-soft); }
+  .suggest b { color: var(--g2); white-space: nowrap; }
+  .sg-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+
+  /* ---------- E-invoice share bar ---------- */
+  .btn.wa { background: #25d366; border-color: #25d366; color: #fff; }
+  .share-box { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+  .share-box .btn.wa { width: 100%; }
+  .share-sub { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .share-sub .muted { margin-left: auto; }
+
+  /* ---------- Customer (client) view ---------- */
+  body.client { background: #e2e8f0; }
+  .cv-wrap { max-width: 560px; margin: 0 auto; padding: 16px 16px 40px; }
+  .cv-top {
+    display: flex; align-items: center; gap: 12px; color: #fff; border-radius: 16px; padding: 14px 16px; margin-bottom: 12px;
+    background: linear-gradient(135deg, var(--g2), var(--g1));
+  }
+  .cv-shop { font-weight: 900; font-size: 17px; letter-spacing: .04em; }
+  .cv-sub { font-size: 12px; opacity: .85; margin-top: 2px; }
+  .cv-card { background: #fff; border-radius: 16px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(15,23,42,.08); }
+  .cv-h { font-weight: 900; font-size: 16px; margin-bottom: 4px; }
+  .fb-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .fb-opt {
+    display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px; border-radius: 12px;
+    border: 2px solid var(--line); background: var(--card); font-size: 22px;
+  }
+  .fb-opt span { font-size: 12px; font-weight: 800; color: var(--ink2); text-align: center; }
+  .fb-opt.ok.sel { border-color: var(--g3); background: #f0fdf4; }
+  .fb-opt.bad.sel { border-color: var(--amber); background: #fffbeb; }
+  .fb-notes {
+    width: 100%; min-height: 90px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px;
+    font: inherit; font-size: 15px; resize: vertical; outline: 0; background: var(--card); margin-bottom: 10px;
+  }
+  .fb-notes:focus { border-color: var(--ind); background: #fff; }
+  .cv-msg { text-align: center; padding: 36px 20px; margin-top: 10vh; }
+  .cv-icon { font-size: 52px; }
+  .cv-msg h1 { font-size: 20px; margin: 10px 0 8px; }
+  .cv-msg p { color: var(--muted); line-height: 1.55; margin: 0; }
+
+  /* ============================================================
+     PRINT — only the invoice is printed (same layout as screen)
+     ============================================================ */
+  #printArea { display: none; }
+  @media print {
+    @page { margin: 8mm; }
+    body { background: #fff; }
+    body > *:not(#printArea) { display: none !important; }
+    #printArea { display: block; max-width: 110mm; margin: 0 auto; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- ========== HELD BILLS BAR ========== -->
+  <nav class="held" id="heldBar" aria-label="Held bills"></nav>
+
+  <!-- ========== GREEN POS HEADER ========== -->
+  <header class="hdr">
+    <div class="hdr-top">
+      <div class="brand">
+        <div class="logo">SB</div>
+        <div style="min-width:0">
+          <div class="brand-name" id="shopName">SWIFTBILL POS</div>
+          <div class="brand-sub">BILL #<span id="billNo">—</span> · <span id="billDate"></span></div>
+        </div>
+      </div>
+      <div class="net">
+        <div class="net-label">NET TOTAL</div>
+        <div class="net-val" id="netTotal">Rs. 0</div>
+        <div class="net-sub" id="netSub"></div>
+      </div>
+    </div>
+
+    <div class="hdr-row">
+      <button class="cust" id="custBtn" aria-label="Select customer">
+        <div class="cust-main">
+          <div class="cust-to">TO:</div>
+          <div class="cust-name" id="custName">Walking Customer</div>
+          <div class="cust-bal" id="custBal">Tap to select customer</div>
+        </div>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+      <button class="icon-btn" id="khataBtn" title="Customer Khata" aria-label="Customer Khata">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </button>
+      <button class="icon-btn" id="historyBtn" title="Bill History" aria-label="Bill History">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l3-2 3 2 3-2 3 2 3-2 1 .67V2l-1 .67L16 2l-3 2-3-2-3 2-3-2Z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+      </button>
+      <button class="icon-btn" id="menuBtn" title="Settings & Backup" aria-label="Menu">
+        <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+      </button>
+    </div>
+
+    <div class="hdr-row">
+      <div class="mode" role="group" aria-label="Bill mode">
+        <button data-mode="SALES" id="modeSales">SALES</button>
+        <button data-mode="SCRAP" id="modeScrap">SCRAP</button>
+      </div>
+      <div class="paid">
+        <label for="paidInput" id="paidLabel">PAID AMOUNT</label>
+        <span class="paid-cur">Rs.</span>
+        <input id="paidInput" type="text" inputmode="decimal" placeholder="Full" autocomplete="off" />
+      </div>
+    </div>
+  </header>
+
+  <!-- ========== ITEM CARDS ========== -->
+  <main class="items" id="itemsList"></main>
+
+  <!-- ========== CALCULATOR PAD ========== -->
+  <section class="pad">
+    <div class="note-row">
+      <input id="noteInput" type="text" placeholder="Item name / note (optional)" autocomplete="off" enterkeyhint="done" />
+      <div class="suggest hidden" id="suggestBox" role="listbox" aria-label="Saved products"></div>
+      <button class="hold-btn" id="holdBtn" title="Hold this bill">
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+        HOLD
+      </button>
+    </div>
+
+    <div class="display">
+      <div class="disp-info">
+        <div class="disp-top">
+          <span class="disp-mode" id="dispMode">SALES</span>
+          <span class="disp-hint" id="dispHint">Rate × Qty → ADD</span>
+        </div>
+        <div class="disp-val" id="dispVal">0</div>
+      </div>
+      <button class="back-btn" id="backBtn" aria-label="Backspace">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Z"/><path d="m18 9-6 6M12 9l6 6"/></svg>
+      </button>
+    </div>
+
+    <div class="keys" id="keys">
+      <button class="k" data-k="7">7</button>
+      <button class="k" data-k="8">8</button>
+      <button class="k" data-k="9">9</button>
+      <button class="k c" data-k="C">C</button>
+      <button class="k" data-k="4">4</button>
+      <button class="k" data-k="5">5</button>
+      <button class="k" data-k="6">6</button>
+      <button class="k x" data-k="x">×</button>
+      <button class="k" data-k="1">1</button>
+      <button class="k" data-k="2">2</button>
+      <button class="k" data-k="3">3</button>
+      <button class="k eq" data-k="=">=</button>
+      <button class="k" data-k="00">00</button>
+      <button class="k" data-k="0">0</button>
+      <button class="k" data-k=".">.</button>
+      <button class="k add" data-k="ADD">ADD</button>
+    </div>
+
+    <div class="actions">
+      <button class="act partial" id="partialBtn">PARTIAL<small>to Khata</small></button>
+      <button class="act" id="chargesBtn">CHARGES<small id="chargesVal">Rs. 0</small></button>
+      <button class="act" id="discountBtn">DISCOUNT<small id="discountVal">Rs. 0</small></button>
+      <button class="act final" id="finalBtn">FINALIZE<small id="finalSub">Complete bill</small></button>
+    </div>
+  </section>
+</div>
+
+<!-- Modal root + toast + print receipt area -->
+<div id="modalRoot"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="printArea"></div>
+<div id="clientView" class="hidden"></div>
+<datalist id="productList"></datalist>
+<input type="file" id="importFile" accept="application/json,.json" class="hidden" />
+
+<script>
+'use strict';
+
+/* =====================================================================
+   1. STORAGE & STATE
+   ===================================================================== */
+const LS_KEY = 'swiftbill_pos_v1';
+
+/** Shape of everything we persist. */
+function defaultState() {
+  return {
+    version: 1,
+    shopName: 'SWIFTBILL POS',
+    nextBillNo: 1001,
+    current: null,   // the bill on screen
+    held: [],        // parked open bills
+    history: [],     // finalized bills, newest first
+    customers: [],   // { id, name, phone, balance, ledger[], createdAt }
+    products: [],    // catalog: { key, name, rate, type, uses, updatedAt }
+    shopWhatsApp: '',   // feedback from customers is sent here
+    countryCode: '92',  // for local numbers like 03001234567
+    invoiceBaseUrl: ''  // public address of this index.html for e-invoice links
+  };
+}
+
+let S = defaultState();
+let CLIENT_MODE = false;   // true when opened via an e-invoice link (#inv=…)
+
+function load() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) S = Object.assign(defaultState(), JSON.parse(raw));
+  } catch (e) {
+    console.error('Could not read saved data', e);
+    S = defaultState();
+  }
+  // Defensive normalisation in case of older/partial data
+  if (!Array.isArray(S.held)) S.held = [];
+  if (!Array.isArray(S.history)) S.history = [];
+  if (!Array.isArray(S.customers)) S.customers = [];
+  if (!Array.isArray(S.products)) S.products = [];
+  S.customers.forEach(c => { if (!Array.isArray(c.ledger)) c.ledger = []; c.balance = num(c.balance); });
+  if (!S.current || !Array.isArray(S.current.items)) S.current = newBill();
+  // v1 → v2: each line now carries its own type (SALE / SCRAP)
+  [S.current, ...S.held].forEach(b => b.items.forEach(it => {
+    if (!it.type) it.type = b.mode === 'SCRAP' ? 'SCRAP' : 'SALE';
+  }));
+  S.history.forEach(migrateRecord);
+}
+
+function save() {
+  if (CLIENT_MODE) return;   // never touch the shop's data from a customer link
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(S));
+  } catch (e) {
+    console.error(e);
+    toast('⚠ Could not save — storage full or blocked');
+  }
+}
+
+/* =====================================================================
+   2. HELPERS
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const round2 = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
+/** Parse any user-typed number safely ("1,200" → 1200, "" → 0). */
+function num(v) {
+  const n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
+  return isFinite(n) ? n : 0;
+}
+
+/** "Rs. 12,345.5" */
+function fmt(n) {
+  n = round2(n);
+  const s = Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  return (n < 0 ? '-Rs. ' : 'Rs. ') + s;
+}
+
+/** Customer balance with meaning: positive = customer owes us. */
+function fmtBal(b) {
+  b = round2(b);
+  if (b === 0) return 'Rs. 0 (clear)';
+  return fmt(Math.abs(b)) + (b > 0 ? ' receivable' : ' payable');
+}
+
+function fmtDate(ts, withTime = true) {
+  const o = { day: '2-digit', month: 'short', year: 'numeric' };
+  if (withTime) { o.hour = '2-digit'; o.minute = '2-digit'; }
+  return new Date(ts).toLocaleString(undefined, o);
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+const isToday = ts => new Date(ts).toDateString() === new Date().toDateString();
+
+let toastTimer;
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+function vibrate() { try { navigator.vibrate && navigator.vibrate(10); } catch (e) {} }
+
+/* =====================================================================
+   3. BILL MODEL
+   A bill holds two kinds of lines in one list:
+     type 'SALE'  → goods sold to the customer          (+)
+     type 'SCRAP' → scrap / returned goods we take back (−, deducted)
+   The SALES / SCRAP toggle only decides which list new items go into.
+   ===================================================================== */
+function newBill() {
+  return {
+    no: S.nextBillNo++,
+    mode: 'SALES',        // input mode: SALES adds sale lines, SCRAP adds deduction lines
+    customerId: null,     // null = Walking Customer
+    items: [],            // { id, name, rate, qty, type: 'SALE' | 'SCRAP' }
+    charges: 0,
+    discount: 0,
+    paid: null,           // cash typed by user (positive); null = settle in full
+    createdAt: Date.now(),
+    reopened: false       // true when a finalized bill was brought back for editing
+  };
+}
+
+const getCustomer = id => (id ? S.customers.find(c => c.id === id) : null) || null;
+const lineTotal = it => round2(num(it.rate) * num(it.qty));
+const isScrap = it => it.type === 'SCRAP';
+/** Signed line amount: scrap lines are negative. */
+const signedTotal = it => (isScrap(it) ? -lineTotal(it) : lineTotal(it));
+const billHasContent = b => b.items.length > 0 || !!b.customerId;
+
+/**
+ * All numbers for a bill.
+ *  net  = sale − scrap + charges − discount   (negative → shop pays the customer)
+ *  cash = signed money movement: + received from customer, − paid out to customer
+ *  due  = net − cash → what this bill adds to the customer's Khata balance
+ * Ledger convention: customer.balance > 0 → customer owes the shop.
+ */
+function calcTotals(b) {
+  let sale = 0, scrap = 0, saleQty = 0, scrapQty = 0;
+  b.items.forEach(it => {
+    if (isScrap(it)) { scrap += lineTotal(it); scrapQty += num(it.qty); }
+    else { sale += lineTotal(it); saleQty += num(it.qty); }
+  });
+  sale = round2(sale); scrap = round2(scrap);
+  const charges = round2(num(b.charges));
+  const discount = round2(num(b.discount));
+  const net = round2(sale - scrap + charges - discount);
+  const payOut = net < 0;
+  const cust = getCustomer(b.customerId);
+  const prev = cust ? round2(cust.balance) : 0;
+  const paidEntered = b.paid !== null && b.paid !== undefined && b.paid !== '';
+  const cashAbs = paidEntered ? round2(Math.abs(num(b.paid))) : Math.abs(net);
+  const cash = payOut ? -cashAbs : cashAbs;
+  const due = round2(net - cash);
+  const short = round2(Math.abs(net) - cashAbs);   // > 0 → not fully settled
+  return {
+    sale, scrap, saleQty: round2(saleQty), scrapQty: round2(scrapQty),
+    charges, discount, net, payOut, cust, prev, paidEntered, cashAbs, cash, due, short,
+    newBal: cust ? round2(prev + due) : null
+  };
+}
+
+/** Rebuild running balances of a customer's ledger (after edits/re-opens). */
+function recalcCustomer(c) {
+  c.ledger.sort((a, b) => a.date - b.date);
+  let bal = 0;
+  c.ledger.forEach(e => { bal = round2(bal + num(e.delta)); e.balance = bal; });
+  c.balance = bal;
+}
+
+/* =====================================================================
+   4. RENDERING
+   ===================================================================== */
+function render() {
+  refreshProductDatalist();
+  renderHeld();
+  renderHeader();
+  renderItems();
+  renderDisplay();
+}
+
+/** Held bills pills bar */
+function renderHeld() {
+  const cur = S.current;
+  let h = `<span class="held-label">HELD BILLS (${S.held.length})</span>`;
+  h += `<button class="pill active" title="Current bill">● BILL #${cur.no}${cur.reopened ? ' ✎' : ''} <small>${fmt(calcTotals(cur).net)}</small></button>`;
+  S.held.forEach(b => {
+    const c = getCustomer(b.customerId);
+    h += `<button class="pill" data-act="switch" data-no="${b.no}" title="${esc(c ? c.name : 'Walking Customer')}">
+            BILL #${b.no}${b.reopened ? ' ✎' : ''} <small>${fmt(calcTotals(b).net)}</small>
+            <span class="x" data-act="drop" data-no="${b.no}" aria-label="Discard held bill">×</span>
+          </button>`;
+  });
+  h += `<button class="pill new" data-act="new">+ NEW BILL</button>`;
+  $('heldBar').innerHTML = h;
+}
+
+/** Header numbers & customer info (does not rebuild inputs → keeps focus) */
+function renderHeader() {
+  const b = S.current, t = calcTotals(b);
+  $('shopName').textContent = S.shopName || 'SWIFTBILL POS';
+  $('billNo').textContent = b.no + (b.reopened ? ' · EDITING' : '');
+  $('billDate').textContent = fmtDate(b.createdAt, false);
+  $('netTotal').textContent = fmt(t.net);
+
+  // Sub-line under NET TOTAL
+  let sub = '';
+  if (t.cust) {
+    sub = 'New Bal: ' + fmtBal(t.newBal);
+  } else if (t.paidEntered && b.items.length) {
+    if (t.short > 0) sub = (t.payOut ? 'To pay: ' : 'Due: ') + fmt(t.short);
+    else sub = (t.payOut ? 'Overpaid: ' : 'Change: ') + fmt(-t.short);
+  } else if (t.scrap > 0) {
+    sub = `Sale ${fmt(t.sale)} − Scrap ${fmt(t.scrap)}`;
+  } else if (b.items.length) {
+    sub = `${b.items.length} item${b.items.length > 1 ? 's' : ''} · ${t.saleQty} pcs`;
+  }
+  if (t.payOut && !sub.startsWith('To pay')) sub = (sub ? sub + ' · ' : '') + 'Pay customer';
+  $('netSub').textContent = sub;
+
+  // Customer selector
+  $('custName').textContent = t.cust ? t.cust.name : 'Walking Customer';
+  $('custBal').textContent = t.cust ? 'Prev Bal: ' + fmtBal(t.prev) : 'Tap to select customer';
+
+  // Mode toggle (input target)
+  $('modeSales').classList.toggle('on', b.mode !== 'SCRAP');
+  $('modeScrap').classList.toggle('on', b.mode === 'SCRAP');
+  $('modeScrap').classList.add('scrap');
+  $('paidLabel').textContent = t.payOut ? 'PAID OUT' : 'PAID AMOUNT';
+
+  // Paid input — don't overwrite while user is typing in it
+  const pi = $('paidInput');
+  if (document.activeElement !== pi) pi.value = t.paidEntered ? String(t.cashAbs) : '';
+
+  // Action button sub-labels
+  $('chargesVal').textContent = fmt(t.charges);
+  $('discountVal').textContent = fmt(t.discount);
+  $('finalSub').textContent = b.items.length ? fmt(t.net) : 'Complete bill';
+  updateSectionTotals();
+}
+
+function itemCardHTML(it, n) {
+  const scrap = isScrap(it);
+  return `
+    <div class="item ${scrap ? 'scrap' : ''}" data-id="${it.id}">
+      <div class="item-top">
+        <span class="badge">${n}</span>
+        <input class="item-name" data-f="name" list="productList" autocomplete="off" value="${esc(it.name)}" placeholder="${scrap ? 'Scrap / return item' : 'Item name'}" aria-label="Item name" />
+        <button class="del" data-act="del" aria-label="Delete item">✕</button>
+      </div>
+      <div class="item-bot">
+        <label class="rate"><span>RATE</span>
+          <input data-f="rate" type="text" inputmode="decimal" value="${round2(num(it.rate))}" aria-label="Rate" />
+        </label>
+        <div class="qty">
+          <button data-act="dec" aria-label="Decrease">−</button>
+          <input data-f="qty" type="text" inputmode="decimal" value="${round2(num(it.qty))}" aria-label="Quantity" />
+          <button data-act="inc" aria-label="Increase">+</button>
+        </div>
+        <div class="it-total">${fmt(signedTotal(it))}</div>
+      </div>
+    </div>`;
+}
+
+/** Item cards: SALE ITEMS section, then SCRAP / DEDUCTION section */
+function renderItems() {
+  const b = S.current, list = $('itemsList');
+  if (!b.items.length) {
+    list.innerHTML = `
+      <div class="empty">
+        <div class="big">🧾</div>
+        <b>No items yet</b><br>
+        Type a <b>rate</b>, press <b>×</b>, type <b>qty</b>, then <b>ADD</b>.<br>
+        <span style="font-size:12px">Switch to <b>SCRAP</b> to add returned / scrap items as deductions.</span>
+      </div>`;
+    return;
+  }
+  const sales = b.items.filter(it => !isScrap(it));
+  const scraps = b.items.filter(isScrap);
+  let h = '';
+  if (sales.length) {
+    h += `<div class="sec-head" data-sec="SALE">SALE ITEMS <span></span></div>`;
+    h += sales.map((it, i) => itemCardHTML(it, i + 1)).join('');
+  }
+  if (scraps.length) {
+    h += `<div class="sec-head scrap" data-sec="SCRAP">SCRAP / DEDUCTION <span></span></div>`;
+    h += scraps.map((it, i) => itemCardHTML(it, i + 1)).join('');
+  }
+  list.innerHTML = h;
+  updateSectionTotals();
+}
+
+/** Refresh the totals shown on the section headings. */
+function updateSectionTotals() {
+  const t = calcTotals(S.current);
+  const s = document.querySelector('[data-sec="SALE"] span');
+  const d = document.querySelector('[data-sec="SCRAP"] span');
+  if (s) s.textContent = fmt(t.sale);
+  if (d) d.textContent = fmt(-t.scrap);
+}
+
+/** Calculator display */
+function renderDisplay() {
+  const mode = S.current.mode === 'SCRAP' ? 'SCRAP' : 'SALES';
+  const dm = $('dispMode');
+  dm.textContent = mode === 'SCRAP' ? 'SCRAP / RETURN' : 'SALES';
+  dm.classList.toggle('scrap', mode === 'SCRAP');
+
+  const expr = calc.expr;
+  $('dispVal').textContent = expr ? expr.replace('x', ' × ') : '0';
+
+  let hint = mode === 'SCRAP' ? 'Rate × Qty → ADD (deducted)' : 'Rate × Qty → ADD';
+  if (expr.includes('x')) {
+    const [a, q] = expr.split('x');
+    if (a && q) hint = '= ' + fmt((mode === 'SCRAP' ? -1 : 1) * num(a) * num(q));
+    else hint = 'Enter quantity';
+  } else if (expr) {
+    hint = 'Press × for qty, or ADD (qty 1)';
+  }
+  $('dispHint').textContent = hint;
+}
+
+/* =====================================================================
+   5. CALCULATOR KEYPAD
+   expr format: "RATE" or "RATExQTY" (internal 'x' separator)
+   ===================================================================== */
+const calc = { expr: '' };
+
+function pressKey(k) {
+  vibrate();
+  let e = calc.expr;
+  const hasX = e.includes('x');
+  const part = hasX ? e.split('x')[1] : e; // the number currently being typed
+
+  if (/^[0-9]$/.test(k)) {
+    if (part.replace('.', '').length >= 10) return toast('Number too long');
+    if (part === '0') e = e.slice(0, -1);       // avoid leading zeros like "07"
+    e += k;
+  } else if (k === '00') {
+    if (!part || part === '0') return;
+    if (part.replace('.', '').length >= 9) return toast('Number too long');
+    e += '00';
+  } else if (k === '.') {
+    if (part.includes('.')) return;
+    e += part ? '.' : '0.';
+  } else if (k === 'C') {
+    e = '';
+  } else if (k === 'BACK') {
+    e = e.slice(0, -1);
+  } else if (k === 'x') {
+    if (!e || e.endsWith('x')) return;
+    if (hasX) {                                 // chain: 10x2 then × → 20x
+      const [a, q] = e.split('x');
+      if (!q) return;
+      e = String(round2(num(a) * num(q))) + 'x';
+    } else {
+      e += 'x';
+    }
+  } else if (k === '=') {
+    if (hasX) {
+      const [a, q] = e.split('x');
+      if (q) e = String(round2(num(a) * num(q)));
+    }
+  } else if (k === 'ADD') {
+    return addFromCalc();
+  }
+  calc.expr = e;
+  renderDisplay();
+}
+
+/** Turn the calculator entry into a new item card. */
+function addFromCalc() {
+  const e = calc.expr;
+  if (!e) {
+    // Name typed but no rate → use the saved product rate with qty 1
+    const p = getProduct($('noteInput').value);
+    if (p) { calc.expr = String(p.rate); return addFromCalc(); }
+    return toast('Enter a rate first');
+  }
+  const [a, q] = e.split('x');
+  const rate = round2(num(a));
+  const qty = q ? round2(num(q)) : 1;
+  if (rate <= 0) return toast('Rate must be greater than 0');
+  if (qty <= 0) return toast('Quantity must be greater than 0');
+
+  const noteEl = $('noteInput');
+  const type = S.current.mode === 'SCRAP' ? 'SCRAP' : 'SALE';
+  const count = S.current.items.filter(it => it.type === type).length + 1;
+  const known = getProduct(noteEl.value);   // use the catalog's spelling for known products
+  const name = (known ? known.name : noteEl.value.trim()) || (type === 'SCRAP' ? 'Scrap item ' : 'Item ') + count;
+  const item = { id: uid(), name, rate, qty, type };
+  S.current.items.push(item);
+  upsertProduct(name, rate, type);      // remember in the product catalog
+  noteEl.value = '';
+  $('suggestBox').classList.add('hidden');
+  calc.expr = '';
+  save();
+  render();
+  const card = document.querySelector(`[data-id="${item.id}"]`);
+  if (card) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+/* =====================================================================
+   6. BILL ACTIONS: hold / switch / new / charges / discount / finalize / re-open
+   ===================================================================== */
+function holdCurrent() {
+  if (!billHasContent(S.current)) return toast('Nothing to hold — bill is empty');
+  const no = S.current.no;
+  S.held.push(S.current);
+  S.current = newBill();
+  calc.expr = '';
+  save(); render();
+  toast(`Bill #${no} held`);
+}
+
+function startNewBill() {
+  if (billHasContent(S.current) || S.current.reopened) {
+    S.held.push(S.current);
+    toast(`Bill #${S.current.no} moved to held bills`);
+  }
+  S.current = newBill();
+  calc.expr = '';
+  save(); render();
+}
+
+/** Swap the current bill with a held one (current goes into its slot). */
+function switchToHeld(no) {
+  const idx = S.held.findIndex(b => b.no === no);
+  if (idx < 0) return;
+  const target = S.held[idx];
+  if (billHasContent(S.current) || S.current.reopened) S.held[idx] = S.current;
+  else S.held.splice(idx, 1);
+  S.current = target;
+  calc.expr = '';
+  save(); render();
+  toast(`Switched to Bill #${no}`);
+}
+
+function dropHeld(no) {
+  const b = S.held.find(x => x.no === no);
+  if (!b) return;
+  const warn = b.reopened
+    ? '<br><br>⚠ This is a <b>re-opened finalized bill</b>. Its original record and Khata entry were already removed — discarding deletes the sale completely.'
+    : '';
+  confirmDialog('Discard held bill?',
+    `Bill <b>#${no}</b> with <b>${b.items.length}</b> item(s) (${fmt(calcTotals(b).net)}) will be deleted permanently.${warn}`,
+    'Discard', () => {
+      S.held = S.held.filter(x => x.no !== no);
+      save(); renderHeld();
+      toast(`Bill #${no} discarded`);
+    }, 'danger');
+}
+
+/** Charges / discount accept plain amounts or "10%" of the sale amount. */
+function editAdjustment(field) {
+  const b = S.current;
+  const label = field === 'charges' ? 'Extra Charges' : 'Discount';
+  const sale = calcTotals(b).sale;
+  numberPrompt(label, num(b[field]) || '', 'Amount in Rs. — or type a percentage like 10% of sale amount (' + fmt(sale) + ')',
+    raw => {
+      let v;
+      const s = String(raw).trim();
+      if (s.endsWith('%')) v = round2(sale * num(s.slice(0, -1)) / 100);
+      else v = round2(num(s));
+      if (v < 0) return toast('Amount cannot be negative');
+      if (field === 'discount' && v > sale + num(b.charges)) return toast('Discount is more than the sale amount');
+      b[field] = v;
+      save(); renderHeader(); renderHeld();
+      toast(`${label}: ${fmt(v)}`);
+    }, true);
+}
+
+/** Short HTML summary used in confirmation dialogs. */
+function settleSummary(b, t) {
+  let msg = `Bill <b>#${b.no}</b>${b.reopened ? ' (edited)' : ''}<br>Sale: ${fmt(t.sale)}`;
+  if (t.scrap) msg += ` · Scrap: ${fmt(-t.scrap)}`;
+  msg += `<br>NET PAYABLE: <b>${fmt(t.net)}</b><br>${t.payOut ? 'Paid out' : 'Cash received'}: <b>${fmt(t.cashAbs)}</b>`;
+  return msg;
+}
+
+/** FINALIZE — settles in full unless a lower paid amount is typed. */
+function finalizeBill() {
+  const b = S.current;
+  if (!b.items.length) return toast('Add at least one item first');
+  const t = calcTotals(b);
+
+  if (!t.cust && t.short > 0) {
+    toast('Select a customer to keep the remaining balance on Khata');
+    return openCustomers('pick');
+  }
+  let msg = settleSummary(b, t);
+  if (t.cust) msg += `<br>${esc(t.cust.name)}: ${fmtBal(t.prev)} → <b>${fmtBal(t.newBal)}</b>`;
+  else if (t.short < 0) msg += `<br>${t.payOut ? 'Extra paid out' : 'Return change'}: <b>${fmt(-t.short)}</b>`;
+  confirmDialog('Finalize bill?', msg, 'Finalize', completeBill, 'primary');
+}
+
+/** PARTIAL — record a part payment, remainder goes to the customer's Khata. */
+function partialBill() {
+  const b = S.current;
+  if (!b.items.length) return toast('Add at least one item first');
+  if (!getCustomer(b.customerId)) {
+    toast('Select a customer for Khata first');
+    return openCustomers('pick', () => partialBill());
+  }
+  const t0 = calcTotals(b);
+  numberPrompt(t0.payOut ? 'Amount paid out now' : 'Amount received now',
+    t0.paidEntered ? t0.cashAbs : '',
+    `Net payable ${fmt(t0.net)}. The rest is saved to ${esc(t0.cust.name)}'s Khata. Leave 0 for full credit.`,
+    raw => {
+      b.paid = round2(Math.abs(num(raw)));
+      const t = calcTotals(b);
+      save(); renderHeader();
+      confirmDialog('Save partial bill?',
+        settleSummary(b, t) +
+        `<br>Balance due on this bill: <b>${fmt(t.due)}</b>` +
+        `<br>${esc(t.cust.name)}: ${fmtBal(t.prev)} → <b>${fmtBal(t.newBal)}</b>`,
+        'Save to Khata', completeBill, 'indigo');
+    }, false);
+}
+
+/** Write the bill to history + customer ledger and start a fresh bill. */
+function completeBill() {
+  const b = S.current;
+  const t = calcTotals(b);
+  const cust = t.cust;
+  const absNet = Math.abs(t.net);
+  // A walking customer can't carry a balance; extra money is returned as change.
+  const settledAbs = cust ? t.cashAbs : Math.min(t.cashAbs, absNet);
+  const cash = t.payOut ? -settledAbs : settledAbs;
+  const due = round2(t.net - cash);
+  const fullySettled = t.payOut ? due >= -0.005 : due <= 0.005;
+  const status = fullySettled ? 'PAID' : settledAbs > 0 ? 'PARTIAL' : 'CREDIT';
+
+  const rec = {
+    no: b.no,
+    createdAt: b.createdAt,
+    date: Date.now(),
+    edited: !!b.reopened,
+    customerId: cust ? cust.id : null,
+    customerName: cust ? cust.name : 'Walking Customer',
+    items: b.items.map(it => ({
+      name: it.name, type: isScrap(it) ? 'SCRAP' : 'SALE',
+      rate: round2(num(it.rate)), qty: round2(num(it.qty)), total: lineTotal(it)
+    })),
+    saleAmt: t.sale,
+    scrapAmt: t.scrap,
+    charges: t.charges,
+    discount: t.discount,
+    net: t.net,
+    cash,                                   // signed: + received, − paid out
+    tendered: t.cashAbs,
+    change: cust ? 0 : round2(Math.max(0, t.cashAbs - absNet)),
+    due,
+    prevBalance: cust ? t.prev : null,
+    newBalance: cust ? round2(t.prev + due) : null,
+    status
+  };
+
+  if (cust) {
+    cust.ledger.push({
+      id: uid(), date: rec.date, type: 'BILL', billNo: b.no,
+      total: t.net, paid: cash, delta: due, balance: 0,
+      note: status === 'PAID' ? 'Bill settled' : status === 'PARTIAL' ? 'Partial payment' : 'On credit'
+    });
+    recalcCustomer(cust);
+  }
+
+  S.history.unshift(rec);
+  S.current = newBill();
+  calc.expr = '';
+  $('noteInput').value = '';
+  save(); render();
+  showReceipt(rec);
+}
+
+/**
+ * Re-open a finalized bill for editing: removes it from history, reverses its
+ * Khata entry, and loads it as the current bill. FINALIZE saves it again.
+ */
+function reopenBill(rec) {
+  const c = getCustomer(rec.customerId);
+  const holdNote = billHasContent(S.current) || S.current.reopened
+    ? `<br><br>Your current Bill #${S.current.no} will be moved to held bills.` : '';
+  confirmDialog(`Edit Bill #${rec.no}?`,
+    `The bill is re-opened on screen so you can change items, quantities, payment or customer.` +
+    (c ? ` Its entry in <b>${esc(c.name)}</b>'s Khata is reversed until you finalize again.` : '') +
+    `<br><br>Press <b>FINALIZE</b> or <b>PARTIAL</b> when done to save it again.${holdNote}`,
+    'Re-open & Edit', () => {
+      const idx = S.history.indexOf(rec);
+      if (idx < 0) return toast('Bill not found');
+      S.history.splice(idx, 1);
+      if (c) {
+        c.ledger = c.ledger.filter(e => e.billNo !== rec.no);
+        recalcCustomer(c);
+      }
+      if (billHasContent(S.current) || S.current.reopened) S.held.push(S.current);
+      const settledFull = !c || Math.abs(num(rec.tendered) - Math.abs(rec.net)) < 0.005;
+      S.current = {
+        no: rec.no,
+        mode: 'SALES',
+        customerId: c ? c.id : null,
+        items: rec.items.map(it => ({ id: uid(), name: it.name, rate: it.rate, qty: it.qty, type: it.type === 'SCRAP' ? 'SCRAP' : 'SALE' })),
+        charges: rec.charges || 0,
+        discount: rec.discount || 0,
+        paid: settledFull ? null : round2(num(rec.tendered)),
+        createdAt: rec.createdAt || rec.date,
+        reopened: true
+      };
+      calc.expr = '';
+      save(); render();
+      toast(`Bill #${rec.no} re-opened for editing`);
+    }, 'indigo');
+}
+
+/* =====================================================================
+   7. MODAL SYSTEM
+   ===================================================================== */
+let modalOnClose = null;
+
+/**
+ * Open a sheet/modal.
+ * opts: { title, body (html), footer (html), back (fn), onMount(el), onClose }
+ */
+function openModal(opts) {
+  const root = $('modalRoot');
+  root.innerHTML = `
+    <div class="overlay" id="overlay">
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(opts.title)}">
+        <div class="sheet-h">
+          ${opts.back ? '<button class="sheet-back" id="mBack" aria-label="Back">‹</button>' : ''}
+          <h2>${esc(opts.title)}</h2>
+          <button class="sheet-x" id="mClose" aria-label="Close">✕</button>
+        </div>
+        <div class="sheet-b" id="mBody">${opts.body || ''}</div>
+        ${opts.footer ? `<div class="sheet-f" id="mFoot">${opts.footer}</div>` : ''}
+      </div>
+    </div>`;
+  modalOnClose = opts.onClose || null;
+  $('mClose').onclick = closeModal;
+  if (opts.back) $('mBack').onclick = opts.back;
+  $('overlay').addEventListener('click', e => { if (e.target.id === 'overlay') closeModal(); });
+  if (opts.onMount) opts.onMount(root.querySelector('.sheet'));
+}
+
+function closeModal() {
+  $('modalRoot').innerHTML = '';
+  const cb = modalOnClose;
+  modalOnClose = null;
+  if (cb) cb();
+}
+const modalOpen = () => !!$('overlay');
+
+function confirmDialog(title, html, okText, onOk, kind = 'primary') {
+  openModal({
+    title,
+    body: `<div class="confirm-msg">${html}</div>`,
+    footer: `<button class="btn grow" id="cNo">Cancel</button>
+             <button class="btn grow ${kind}" id="cYes">${esc(okText)}</button>`,
+    onMount: () => {
+      $('cNo').onclick = closeModal;
+      $('cYes').onclick = () => { closeModal(); onOk(); };
+      $('cYes').focus();
+    }
+  });
+}
+
+/** Numeric (or "10%") input dialog. */
+function numberPrompt(title, initial, hint, onOk, allowPercent) {
+  openModal({
+    title,
+    body: `<div class="field">
+             <input id="npIn" class="big-input" type="text" inputmode="decimal" autocomplete="off" value="${esc(initial)}" placeholder="0" />
+             <div class="hint">${hint || ''}</div>
+           </div>`,
+    footer: `<button class="btn grow" id="npNo">Cancel</button><button class="btn grow primary" id="npOk">OK</button>`,
+    onMount: () => {
+      const inp = $('npIn');
+      const submit = () => {
+        const v = inp.value.trim();
+        if (allowPercent && v.endsWith('%') ? isNaN(parseFloat(v)) : (v !== '' && isNaN(parseFloat(v.replace(/,/g, ''))))) {
+          return toast('Please enter a valid number');
+        }
+        closeModal();
+        onOk(v === '' ? '0' : v);
+      };
+      $('npNo').onclick = closeModal;
+      $('npOk').onclick = submit;
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+      setTimeout(() => { inp.focus(); inp.select(); }, 50);
+    }
+  });
+}
+
+/* =====================================================================
+   8. CUSTOMERS & KHATA
+   ===================================================================== */
+
+/**
+ * Customer list.
+ * mode 'pick'   → tapping a row assigns customer to current bill
+ * mode 'manage' → tapping a row opens their Khata
+ */
+function openCustomers(mode = 'manage', afterPick) {
+  const totalRecv = S.customers.reduce((s, c) => s + (c.balance > 0 ? c.balance : 0), 0);
+  const totalPay = S.customers.reduce((s, c) => s + (c.balance < 0 ? -c.balance : 0), 0);
+  openModal({
+    title: mode === 'pick' ? 'Select Customer' : 'Customer Khata',
+    body: `
+      ${mode === 'manage' ? `
+      <div class="stats">
+        <div class="stat"><div class="stat-l">TOTAL RECEIVABLE</div><div class="stat-v recv">${fmt(totalRecv)}</div></div>
+        <div class="stat"><div class="stat-l">TOTAL PAYABLE</div><div class="stat-v pay">${fmt(totalPay)}</div></div>
+      </div>` : ''}
+      <input class="search" id="cSearch" type="search" placeholder="Search name or phone…" autocomplete="off" />
+      <div id="cList"></div>`,
+    footer: `<button class="btn grow indigo" id="cAdd">+ New Customer</button>`,
+    onMount: () => {
+      const draw = () => {
+        const q = $('cSearch').value.trim().toLowerCase();
+        const list = S.customers
+          .filter(c => !q || c.name.toLowerCase().includes(q) || (c.phone || '').includes(q))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        const curId = S.current.customerId;
+        let h = '';
+        if (mode === 'pick' && !q) {
+          h += `<button class="row ${!curId ? 'sel' : ''}" data-pick="">
+                  <div class="avatar">W</div>
+                  <div class="row-main"><div class="row-t">Walking Customer</div><div class="row-s">Cash sale, no Khata</div></div>
+                </button>`;
+        }
+        h += list.map(c => `
+          <div class="row ${c.id === curId && mode === 'pick' ? 'sel' : ''}" data-row="${c.id}" role="button" tabindex="0">
+            <div class="avatar">${esc(c.name.charAt(0).toUpperCase())}</div>
+            <div class="row-main">
+              <div class="row-t">${esc(c.name)}</div>
+              <div class="row-s">${esc(c.phone || 'No phone')} · ${c.ledger.length} entries</div>
+            </div>
+            <div class="row-r">
+              <div class="amt ${c.balance > 0 ? 'recv' : c.balance < 0 ? 'pay' : 'muted'}">${fmt(Math.abs(c.balance))}</div>
+              <div class="row-s">${c.balance > 0 ? 'receivable' : c.balance < 0 ? 'payable' : 'clear'}</div>
+            </div>
+            ${mode === 'pick' ? `<button class="btn sm" data-khata="${c.id}">Khata</button>` : ''}
+          </div>`).join('');
+        if (!list.length && (q || mode === 'manage')) {
+          h += `<div class="empty">${q ? 'No customer matches “' + esc(q) + '”' : 'No customers yet.<br>Tap <b>+ New Customer</b> to add one.'}</div>`;
+        }
+        $('cList').innerHTML = h;
+      };
+      draw();
+      $('cSearch').addEventListener('input', draw);
+      $('cList').addEventListener('click', e => {
+        const kh = e.target.closest('[data-khata]');
+        if (kh) return openKhata(kh.dataset.khata, () => openCustomers(mode, afterPick));
+        const pk = e.target.closest('[data-pick]');
+        if (pk) return pickCustomer(null, afterPick);
+        const row = e.target.closest('[data-row]');
+        if (!row) return;
+        if (mode === 'pick') pickCustomer(row.dataset.row, afterPick);
+        else openKhata(row.dataset.row, () => openCustomers('manage'));
+      });
+      $('cAdd').onclick = () => openCustomerForm(null, id => {
+        if (mode === 'pick') pickCustomer(id, afterPick);
+        else openKhata(id, () => openCustomers('manage'));
+      }, () => openCustomers(mode, afterPick));
+    }
+  });
+}
+
+function pickCustomer(id, afterPick) {
+  S.current.customerId = id || null;
+  save(); renderHeader(); renderHeld();
+  closeModal();
+  toast(id ? 'Customer: ' + getCustomer(id).name : 'Walking Customer selected');
+  if (id && afterPick) afterPick();
+}
+
+/** Add / edit customer form. */
+function openCustomerForm(id, onSaved, onBack) {
+  const c = getCustomer(id);
+  openModal({
+    title: c ? 'Edit Customer' : 'New Customer',
+    back: onBack,
+    body: `
+      <div class="field"><label>NAME *</label><input id="fName" value="${esc(c ? c.name : '')}" placeholder="Customer name" autocomplete="off" /></div>
+      <div class="field"><label>PHONE</label><input id="fPhone" type="tel" value="${esc(c ? c.phone : '')}" placeholder="03xx-xxxxxxx" autocomplete="off" /></div>
+      ${c ? '' : `<div class="field"><label>OPENING BALANCE</label>
+        <input id="fOpen" type="text" inputmode="decimal" placeholder="0" autocomplete="off" />
+        <div class="hint">Positive = customer owes you. Negative (e.g. -500) = you owe the customer.</div></div>`}`,
+    footer: `<button class="btn grow" id="fCancel">Cancel</button><button class="btn grow primary" id="fSave">Save</button>`,
+    onMount: () => {
+      setTimeout(() => $('fName').focus(), 50);
+      $('fCancel').onclick = onBack || closeModal;
+      $('fSave').onclick = () => {
+        const name = $('fName').value.trim();
+        const phone = $('fPhone').value.trim();
+        if (!name) return toast('Name is required');
+        const dup = S.customers.find(x => x.name.toLowerCase() === name.toLowerCase() && x.id !== id);
+        if (dup) return toast('A customer with this name already exists');
+        if (c) {
+          c.name = name; c.phone = phone;
+          save(); render();
+          toast('Customer updated');
+          onSaved && onSaved(c.id);
+        } else {
+          const open = round2(num($('fOpen').value));
+          const nc = { id: uid(), name, phone, balance: open, ledger: [], createdAt: Date.now() };
+          if (open !== 0) nc.ledger.push({ id: uid(), date: Date.now(), type: 'OPENING', billNo: null, total: 0, paid: 0, delta: open, balance: open, note: 'Opening balance' });
+          S.customers.push(nc);
+          save();
+          toast('Customer added');
+          onSaved && onSaved(nc.id);
+        }
+      };
+    }
+  });
+}
+
+/** Customer ledger (Khata) view. */
+function openKhata(id, onBack) {
+  const c = getCustomer(id);
+  if (!c) return toast('Customer not found');
+  const rows = c.ledger.slice().reverse();
+  const typeTag = e => {
+    if (e.type === 'BILL') return '<span class="tag">BILL</span>';
+    if (e.type === 'SALES') return '<span class="tag">SALE</span>';
+    if (e.type === 'SCRAP') return '<span class="tag scrap">SCRAP</span>';
+    if (e.type === 'PAYMENT IN') return '<span class="tag pay">RECEIVED</span>';
+    if (e.type === 'PAYMENT OUT') return '<span class="tag pay">PAID OUT</span>';
+    return `<span class="tag partial">${esc(e.type)}</span>`;
+  };
+  openModal({
+    title: c.name,
+    back: onBack,
+    body: `
+      <div class="bal-card ${c.balance > 0 ? 'recv' : ''}">
+        <div class="bal-l">${c.balance > 0 ? 'CUSTOMER OWES YOU' : c.balance < 0 ? 'YOU OWE CUSTOMER' : 'ACCOUNT CLEAR'}</div>
+        <div class="bal-v">${fmt(Math.abs(c.balance))}</div>
+        <div class="bal-s">${esc(c.phone || 'No phone')} · ${c.ledger.length} entries</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn sm primary" id="kRecv">+ Receive Payment</button>
+        <button class="btn sm" id="kPay">− Pay Customer</button>
+        <button class="btn sm indigo" id="kUse">Use on Bill</button>
+        <button class="btn sm" id="kEdit">Edit</button>
+        <button class="btn sm danger" id="kDel">Delete</button>
+      </div>
+      <div class="sec-title">TRANSACTIONS</div>
+      ${rows.length ? rows.map(e => `
+        <div class="row" ${e.billNo ? `data-bill="${e.billNo}" role="button"` : ''}>
+          <div class="row-main">
+            <div class="row-t">${typeTag(e)} ${e.billNo ? 'Bill #' + e.billNo : esc(e.note || '')}</div>
+            <div class="row-s">${fmtDate(e.date)}${e.billNo ? ` · Total ${fmt(e.total)} · Paid ${fmt(e.paid)}` : ''}</div>
+          </div>
+          <div class="row-r">
+            <div class="amt ${e.delta > 0 ? 'recv' : 'pay'}">${e.delta > 0 ? '+' : e.delta < 0 ? '−' : ''}${fmt(Math.abs(e.delta)).replace('Rs. ', '')}</div>
+            <div class="row-s">Bal ${fmt(e.balance)}</div>
+          </div>
+        </div>`).join('') : '<div class="empty">No transactions yet.</div>'}`,
+    onMount: () => {
+      const reopen = () => openKhata(id, onBack);
+      const addEntry = (type, amt, note) => {
+        const delta = type === 'PAYMENT IN' ? -amt : amt;
+        c.balance = round2(c.balance + delta);
+        c.ledger.push({ id: uid(), date: Date.now(), type, billNo: null, total: 0, paid: amt, delta, balance: c.balance, note });
+        save(); renderHeader();
+        toast(`${note}: ${fmt(amt)}`);
+        reopen();
+      };
+      $('kRecv').onclick = () => numberPrompt('Receive payment from ' + c.name, '',
+        'Current: ' + fmtBal(c.balance) + '. This reduces what the customer owes.',
+        v => { const a = round2(num(v)); if (a <= 0) return toast('Enter an amount'); addEntry('PAYMENT IN', a, 'Payment received'); });
+      $('kPay').onclick = () => numberPrompt('Pay to ' + c.name, '',
+        'Current: ' + fmtBal(c.balance) + '. Use when you pay the customer (e.g. scrap dues).',
+        v => { const a = round2(num(v)); if (a <= 0) return toast('Enter an amount'); addEntry('PAYMENT OUT', a, 'Payment given'); });
+      $('kUse').onclick = () => pickCustomer(c.id);
+      $('kEdit').onclick = () => openCustomerForm(c.id, reopen, reopen);
+      $('kDel').onclick = () => confirmDialog('Delete customer?',
+        `<b>${esc(c.name)}</b> and their Khata (${fmtBal(c.balance)}) will be deleted. Past bills stay in history.`,
+        'Delete', () => {
+          S.customers = S.customers.filter(x => x.id !== c.id);
+          [S.current, ...S.held].forEach(b => { if (b.customerId === c.id) b.customerId = null; });
+          save(); render();
+          toast('Customer deleted');
+          openCustomers('manage');
+        }, 'danger');
+      $('mBody').addEventListener('click', e => {
+        const r = e.target.closest('[data-bill]');
+        if (r) {
+          const rec = S.history.find(h => String(h.no) === r.dataset.bill);
+          if (rec) showBillDetail(rec, reopen);
+        }
+      });
+    }
+  });
+}
+
+/* =====================================================================
+   9. BILL HISTORY, INVOICE VIEW, PRINT & SHARE
+   ===================================================================== */
+function statusTag(rec) {
+  const cls = rec.status === 'PAID' ? '' : rec.status === 'PARTIAL' ? 'partial' : 'credit';
+  return `<span class="tag ${cls}">${rec.status}</span>`;
+}
+
+/** Upgrade bills saved by the first version (single-mode bills) to the new shape. */
+function migrateRecord(r) {
+  if (r.saleAmt !== undefined) return;
+  const scrapBill = r.mode === 'SCRAP';
+  r.items = Array.isArray(r.items) ? r.items : [];
+  r.items.forEach(it => { it.type = it.type || (scrapBill ? 'SCRAP' : 'SALE'); });
+  const sum = type => round2(r.items.filter(i => i.type === type).reduce((s, i) => s + num(i.total), 0));
+  r.saleAmt = sum('SALE');
+  r.scrapAmt = sum('SCRAP');
+  r.charges = num(r.charges);
+  r.discount = num(r.discount);
+  r.net = round2(r.saleAmt - r.scrapAmt + r.charges - r.discount);
+  r.cash = scrapBill ? -num(r.paid) : num(r.paid);
+  r.tendered = r.tendered != null ? num(r.tendered) : Math.abs(r.cash);
+  r.due = round2(r.net - r.cash);
+  r.createdAt = r.createdAt || r.date;
+}
+
+function openHistory() {
+  const today = S.history.filter(h => isToday(h.date));
+  const sum = (arr, f) => round2(arr.reduce((s, x) => s + f(x), 0));
+  const saleToday = sum(today, h => h.saleAmt);
+  const scrapToday = sum(today, h => h.scrapAmt);
+  const cashIn = sum(today, h => Math.max(0, h.cash));
+  const cashOut = sum(today, h => Math.max(0, -h.cash));
+
+  openModal({
+    title: 'Bill History',
+    body: `
+      <div class="stats">
+        <div class="stat"><div class="stat-l">TODAY SALES (${today.length} bills)</div><div class="stat-v pay">${fmt(saleToday)}</div></div>
+        <div class="stat"><div class="stat-l">TODAY SCRAP / RETURNS</div><div class="stat-v" style="color:var(--amber)">${fmt(-scrapToday)}</div></div>
+        <div class="stat"><div class="stat-l">CASH IN</div><div class="stat-v">${fmt(cashIn)}</div></div>
+        <div class="stat"><div class="stat-l">CASH OUT</div><div class="stat-v">${fmt(cashOut)}</div></div>
+      </div>
+      <input class="search" id="hSearch" type="search" placeholder="Search bill #, customer or item…" autocomplete="off" />
+      <div id="hList"></div>`,
+    onMount: () => {
+      const draw = () => {
+        const q = $('hSearch').value.trim().toLowerCase().replace(/^#/, '');
+        const list = S.history.filter(h => !q ||
+          String(h.no).includes(q) ||
+          h.customerName.toLowerCase().includes(q) ||
+          h.items.some(it => it.name.toLowerCase().includes(q)));
+        const shown = list.slice(0, 300);
+        $('hList').innerHTML = shown.length ? shown.map(h => `
+          <div class="row" data-no="${h.no}" role="button" tabindex="0">
+            <div class="row-main">
+              <div class="row-t">Bill #${h.no} · ${esc(h.customerName)}</div>
+              <div class="row-s">${fmtDate(h.date)} · ${h.items.length} item(s)</div>
+            </div>
+            <div class="row-r">
+              <div class="amt">${fmt(h.net)}</div>
+              <div style="margin-top:3px">${h.scrapAmt ? '<span class="tag scrap">SCRAP</span> ' : ''}${h.edited ? '<span class="tag pay">EDITED</span> ' : ''}${statusTag(h)}</div>
+            </div>
+            <button class="btn sm indigo" data-edit="${h.no}" title="Re-open and edit this bill">Edit</button>
+          </div>`).join('') + (list.length > shown.length ? `<div class="center muted" style="font-size:12px">Showing 300 of ${list.length}. Refine your search.</div>` : '')
+          : `<div class="empty">${q ? 'No bills match your search.' : 'No finalized bills yet.'}</div>`;
+      };
+      draw();
+      $('hSearch').addEventListener('input', draw);
+      $('hList').addEventListener('click', e => {
+        const ed = e.target.closest('[data-edit]');
+        if (ed) {
+          const rec = S.history.find(h => String(h.no) === ed.dataset.edit);
+          return rec && reopenBill(rec);
+        }
+        const r = e.target.closest('[data-no]');
+        if (!r) return;
+        const rec = S.history.find(h => String(h.no) === r.dataset.no);
+        if (rec) showBillDetail(rec, openHistory);
+      });
+    }
+  });
+}
+
+/**
+ * CUSTOMER INVOICE — one layout used for the on-screen modal AND printing.
+ * Header → SALE ITEMS → SCRAP / DEDUCTION → summary box → footer.
+ */
+function invoiceHTML(rec) {
+  const d = new Date(rec.date);
+  const sales = rec.items.filter(it => it.type !== 'SCRAP');
+  const scraps = rec.items.filter(it => it.type === 'SCRAP');
+  const money = n => fmt(n);
+  const qtyTotal = round2(rec.items.reduce((s, it) => s + num(it.qty), 0));
+
+  const saleRows = sales.length ? sales.map((it, i) => `
+      <tr><td>${i + 1}</td><td>${esc(it.name)}</td><td class="n">${it.qty}</td><td class="n">${round2(it.rate).toLocaleString('en-US')}</td><td class="n">${money(it.total)}</td></tr>`).join('')
+    : `<tr><td colspan="5" class="inv-none">No sale items</td></tr>`;
+
+  const scrapTable = scraps.length ? `
+    <div class="inv-sec scrap">SCRAP / DEDUCTION</div>
+    <table class="inv-t">
+      <thead><tr><th>#</th><th>Description</th><th class="n">Qty</th><th class="n">Rate</th><th class="n">Total</th></tr></thead>
+      <tbody>${scraps.map((it, i) => `
+        <tr class="neg"><td>${i + 1}</td><td>${esc(it.name)}</td><td class="n">-${it.qty}</td><td class="n">${round2(it.rate).toLocaleString('en-US')}</td><td class="n">${money(-it.total)}</td></tr>`).join('')}
+      </tbody>
+    </table>` : '';
+
+  const cashLabel = rec.cash < 0 ? 'Cash Paid Out' : 'Cash Received';
+  const cashShown = rec.cash < 0 ? -(rec.tendered != null ? rec.tendered : -rec.cash) : (rec.tendered != null ? rec.tendered : rec.cash);
+
+  return `
+  <div class="inv">
+    <div class="inv-head">
+      <div class="inv-shop">${esc(S.shopName || 'SWIFTBILL POS')}</div>
+      <div class="inv-title">CUSTOMER INVOICE</div>
+    </div>
+    <div class="inv-meta">
+      <div><span>Bill No</span><b>#${rec.no}${rec.edited ? ' (edited)' : ''}</b></div>
+      <div><span>Date</span><b>${d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}</b></div>
+      <div><span>Customer</span><b>${esc(rec.customerName)}</b></div>
+      <div><span>Time</span><b>${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</b></div>
+    </div>
+
+    <div class="inv-sec">SALE ITEMS</div>
+    <table class="inv-t">
+      <thead><tr><th>#</th><th>Description</th><th class="n">Qty</th><th class="n">Rate</th><th class="n">Total</th></tr></thead>
+      <tbody>${saleRows}</tbody>
+    </table>
+    ${scrapTable}
+
+    <div class="inv-sum">
+      <div><span>Sale Amount</span><span>${money(rec.saleAmt)}</span></div>
+      <div class="neg"><span>Scrap Deduction</span><span>${money(-rec.scrapAmt)}</span></div>
+      ${rec.charges ? `<div><span>Charges</span><span>+ ${money(rec.charges)}</span></div>` : ''}
+      ${rec.discount ? `<div><span>Discount</span><span>${money(-rec.discount)}</span></div>` : ''}
+      <div class="net"><span>NET PAYABLE</span><span>${money(rec.net)}</span></div>
+      <div><span>${cashLabel}</span><span>${money(cashShown)}</span></div>
+      ${rec.change ? `<div><span>Change Returned</span><span>${money(rec.change)}</span></div>` : ''}
+      <div class="due"><span>BALANCE DUE</span><span>${money(rec.due)}</span></div>
+      ${rec.prevBalance != null ? `
+        <div class="sm"><span>Previous Balance</span><span>${money(rec.prevBalance)}</span></div>
+        <div class="sm"><b>Total Khata Balance</b><b>${money(rec.newBalance)}</b></div>` : ''}
+    </div>
+
+    <div class="inv-foot">
+      <div class="inv-count"><span>Total Items / Qty</span><b>${rec.items.length} items / ${qtyTotal} pcs</b></div>
+      <p class="inv-policy">Goods once sold can be exchanged within 7 days with this invoice in original condition.
+        No cash refunds. Scrap / returned items are deducted at the agreed rate. Thank you for your business!</p>
+      <div class="inv-sign"><div>Record Copy</div><div>Auth. Sign</div></div>
+    </div>
+  </div>`;
+}
+
+function showBillDetail(rec, onBack) {
+  openModal({
+    title: 'Invoice #' + rec.no,
+    back: onBack,
+    body: eInvoiceBarHTML() + `<div class="inv-status">${rec.scrapAmt ? '<span class="tag scrap">SCRAP</span> ' : ''}${rec.edited ? '<span class="tag pay">EDITED</span> ' : ''}${statusTag(rec)}</div>` + invoiceHTML(rec),
+    footer: `<button class="btn grow indigo" id="bEdit">Edit</button>
+             <button class="btn grow" id="bCopy">Re-bill</button>
+             <button class="btn grow" id="bShare">Share</button>
+             <button class="btn grow primary" id="bPrint">Print</button>`,
+    onMount: () => {
+      wireEInvoiceBar(rec);
+      $('bPrint').onclick = () => printReceipt(rec);
+      $('bShare').onclick = () => shareReceipt(rec);
+      $('bEdit').onclick = () => reopenBill(rec);
+      $('bCopy').onclick = () => {
+        // Copy items into a brand-new bill (current one is held if it has content)
+        startNewBill();
+        const b = S.current;
+        b.customerId = getCustomer(rec.customerId) ? rec.customerId : null;
+        b.items = rec.items.map(it => ({ id: uid(), name: it.name, rate: it.rate, qty: it.qty, type: it.type === 'SCRAP' ? 'SCRAP' : 'SALE' }));
+        save(); render(); closeModal();
+        toast(`Items from Bill #${rec.no} copied to Bill #${b.no}`);
+      };
+    }
+  });
+}
+
+/** Shown right after FINALIZE / PARTIAL. */
+function showReceipt(rec) {
+  openModal({
+    title: `✓ Bill #${rec.no} saved`,
+    body: eInvoiceBarHTML() + invoiceHTML(rec),
+    footer: `<button class="btn grow indigo" id="rEdit">Edit</button>
+             <button class="btn grow" id="rShare">Share</button>
+             <button class="btn grow" id="rPrint">Print</button>
+             <button class="btn grow primary" id="rDone">New Bill</button>`,
+    onMount: () => {
+      wireEInvoiceBar(rec);
+      $('rPrint').onclick = () => printReceipt(rec);
+      $('rShare').onclick = () => shareReceipt(rec);
+      $('rEdit').onclick = () => reopenBill(rec);
+      $('rDone').onclick = closeModal;
+    }
+  });
+}
+
+/** Plain-text invoice (for WhatsApp/SMS sharing). */
+function receiptText(rec) {
+  const L = [];
+  const sales = rec.items.filter(it => it.type !== 'SCRAP');
+  const scraps = rec.items.filter(it => it.type === 'SCRAP');
+  L.push(`*${S.shopName || 'SWIFTBILL POS'}*`);
+  L.push('CUSTOMER INVOICE');
+  L.push(`Bill #${rec.no} - ${fmtDate(rec.date)}`);
+  L.push(`Customer: ${rec.customerName}`);
+  L.push('------------------------');
+  if (sales.length) {
+    L.push('*SALE ITEMS*');
+    sales.forEach((it, i) => L.push(`${i + 1}. ${it.name}\n   ${it.qty} x ${it.rate} = ${fmt(it.total)}`));
+  }
+  if (scraps.length) {
+    L.push('*SCRAP / DEDUCTION*');
+    scraps.forEach((it, i) => L.push(`${i + 1}. ${it.name}\n   -${it.qty} x ${it.rate} = ${fmt(-it.total)}`));
+  }
+  L.push('------------------------');
+  L.push(`Sale Amount: ${fmt(rec.saleAmt)}`);
+  if (rec.scrapAmt) L.push(`Scrap Deduction: ${fmt(-rec.scrapAmt)}`);
+  if (rec.charges) L.push(`Charges: +${fmt(rec.charges)}`);
+  if (rec.discount) L.push(`Discount: ${fmt(-rec.discount)}`);
+  L.push(`*NET PAYABLE: ${fmt(rec.net)}*`);
+  L.push(`${rec.cash < 0 ? 'Cash Paid Out' : 'Cash Received'}: ${fmt(rec.tendered != null ? rec.tendered : Math.abs(rec.cash))}`);
+  if (rec.change) L.push(`Change: ${fmt(rec.change)}`);
+  L.push(`*BALANCE DUE: ${fmt(rec.due)}*`);
+  if (rec.newBalance != null) L.push(`Khata Balance: ${fmtBal(rec.newBalance)}`);
+  L.push('Thank you!');
+  return L.join('\n');
+}
+
+async function shareReceipt(rec) {
+  const text = receiptText(rec);
+  try {
+    if (navigator.share) { await navigator.share({ title: 'Invoice #' + rec.no, text }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('Invoice copied to clipboard');
+  } catch (e) {
+    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+  }
+}
+
+/** Print exactly the same invoice layout shown on screen. */
+function printReceipt(rec) {
+  $('printArea').innerHTML = invoiceHTML(rec);
+  window.print();
+}
+
+/* =====================================================================
+   10. SETTINGS / BACKUP
+   ===================================================================== */
+function openMenu() {
+  const bytes = (localStorage.getItem(LS_KEY) || '').length;
+  openModal({
+    title: 'Settings & Backup',
+    body: `
+      <div class="field"><label>SHOP NAME (shown on header & receipts)</label>
+        <input id="sName" value="${esc(S.shopName)}" maxlength="40" autocomplete="off" /></div>
+      <div class="field"><label>SHOP WHATSAPP NUMBER (receives customer feedback)</label>
+        <input id="sWa" type="tel" value="${esc(S.shopWhatsApp)}" placeholder="03001234567" autocomplete="off" /></div>
+      <div class="field"><label>COUNTRY CODE (for numbers starting with 0)</label>
+        <input id="sCc" type="tel" value="${esc(S.countryCode)}" placeholder="92" maxlength="4" autocomplete="off" /></div>
+      <div class="field"><label>PUBLIC INVOICE PAGE URL</label>
+        <input id="sUrl" type="url" value="${esc(S.invoiceBaseUrl)}" placeholder="https://yourname.github.io/swiftbill/" autocomplete="off" />
+        <div class="hint">Where this same index.html is hosted (GitHub Pages, Netlify…). Needed so customers can open
+          e-invoice links. Bill data is never uploaded — it travels inside the link.</div></div>
+      <button class="btn" style="width:100%;margin-bottom:12px" id="sProducts">📦 Product Catalog (${S.products.length})</button>
+      <div class="stats">
+        <div class="stat"><div class="stat-l">CUSTOMERS</div><div class="stat-v">${S.customers.length}</div></div>
+        <div class="stat"><div class="stat-l">BILLS SAVED</div><div class="stat-v">${S.history.length}</div></div>
+      </div>
+      <p class="muted" style="font-size:13px;line-height:1.5;margin:0 0 12px">
+        Data is stored only in this browser (${(bytes / 1024).toFixed(1)} KB used). Clearing browser data deletes it —
+        download a backup regularly.
+      </p>
+      <div class="btn-row">
+        <button class="btn grow indigo" id="sExport">⬇ Download Backup</button>
+        <button class="btn grow" id="sImport">⬆ Restore Backup</button>
+      </div>
+      <button class="btn danger" style="width:100%" id="sReset">Erase All Data</button>`,
+    footer: `<button class="btn grow primary" id="sSave">Save</button>`,
+    onMount: () => {
+      $('sSave').onclick = () => {
+        const url = $('sUrl').value.trim();
+        if (url && !/^https?:\/\//i.test(url)) return toast('URL must start with https://');
+        S.shopName = $('sName').value.trim() || 'SWIFTBILL POS';
+        S.shopWhatsApp = $('sWa').value.trim();
+        S.countryCode = $('sCc').value.replace(/\D/g, '') || '92';
+        S.invoiceBaseUrl = url.split('#')[0];
+        save(); renderHeader(); closeModal(); toast('Settings saved');
+      };
+      $('sProducts').onclick = openProducts;
+      $('sExport').onclick = exportBackup;
+      $('sImport').onclick = () => $('importFile').click();
+      $('sReset').onclick = () => confirmDialog('Erase ALL data?',
+        'All customers, Khata balances, held bills and history will be <b>permanently deleted</b> from this device.',
+        'Erase Everything', () => {
+          localStorage.removeItem(LS_KEY);
+          S = defaultState(); S.current = newBill();
+          save(); render(); toast('All data erased');
+        }, 'danger');
+    }
+  });
+}
+
+function exportBackup() {
+  const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `swiftbill-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast('Backup downloaded');
+}
+
+$('importFile').addEventListener('change', e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!data || !Array.isArray(data.customers) || !Array.isArray(data.history)) throw new Error('bad file');
+      confirmDialog('Restore backup?',
+        `This replaces current data with <b>${data.customers.length}</b> customers and <b>${data.history.length}</b> bills from the file.`,
+        'Restore', () => {
+          localStorage.setItem(LS_KEY, JSON.stringify(data));
+          load(); save(); render();
+          toast('Backup restored');
+        }, 'primary');
+    } catch (err) {
+      toast('Invalid backup file');
+    }
+  };
+  reader.readAsText(file);
+});
+
+/* =====================================================================
+   11. EVENT WIRING
+   ===================================================================== */
+
+// Keypad (pointerdown-free click keeps it simple & accessible)
+$('keys').addEventListener('click', e => {
+  const k = e.target.closest('[data-k]');
+  if (k) pressKey(k.dataset.k);
+});
+$('backBtn').onclick = () => pressKey('BACK');
+
+// Held bills bar
+$('heldBar').addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const no = Number(el.dataset.no);
+  if (el.dataset.act === 'drop') { e.stopPropagation(); dropHeld(no); }
+  else if (el.dataset.act === 'switch') switchToHeld(no);
+  else if (el.dataset.act === 'new') startNewBill();
+});
+
+// Header controls
+$('custBtn').onclick = () => openCustomers('pick');
+$('khataBtn').onclick = () => openCustomers('manage');
+$('historyBtn').onclick = openHistory;
+$('menuBtn').onclick = openMenu;
+document.querySelectorAll('.mode button').forEach(btn => {
+  btn.onclick = () => {
+    S.current.mode = btn.dataset.mode;
+    toast(btn.dataset.mode === 'SCRAP' ? 'SCRAP mode: new items are deducted' : 'SALES mode');
+    save(); renderHeader(); renderDisplay();
+  };
+});
+$('paidInput').addEventListener('input', e => {
+  const v = e.target.value.trim();
+  S.current.paid = v === '' ? null : round2(num(v));
+  save(); renderHeader(); renderHeld();
+});
+$('paidInput').addEventListener('blur', () => renderHeader());
+$('paidInput').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+
+// Item cards: edit name / rate / qty in place without re-rendering (keeps focus)
+$('itemsList').addEventListener('input', e => {
+  const f = e.target.dataset.f;
+  const card = e.target.closest('[data-id]');
+  if (!f || !card) return;
+  const it = S.current.items.find(x => x.id === card.dataset.id);
+  if (!it) return;
+  if (f === 'name') it.name = e.target.value;
+  else it[f] = round2(num(e.target.value));
+  card.querySelector('.it-total').textContent = fmt(signedTotal(it));
+  save(); renderHeader(); renderHeld();
+});
+// Normalise numeric fields when leaving them
+$('itemsList').addEventListener('focusout', e => {
+  const f = e.target.dataset.f;
+  const card = e.target.closest('[data-id]');
+  if (!card || !f) return;
+  const it = S.current.items.find(x => x.id === card.dataset.id);
+  if (!it) return;
+  if (f === 'rate' || f === 'qty') e.target.value = round2(num(it[f]));
+  if (f === 'name' || f === 'rate') { upsertProduct(it.name, it.rate, it.type, false); save(); }
+});
+// Choosing a saved product name on a card fills in its catalog rate
+$('itemsList').addEventListener('change', e => {
+  if (e.target.dataset.f !== 'name') return;
+  const card = e.target.closest('[data-id]');
+  const it = card && S.current.items.find(x => x.id === card.dataset.id);
+  const p = it && getProduct(it.name);
+  if (!p || p.rate === num(it.rate)) return;
+  it.rate = p.rate;
+  card.querySelector('[data-f="rate"]').value = p.rate;
+  card.querySelector('.it-total').textContent = fmt(signedTotal(it));
+  save(); renderHeader(); renderHeld();
+  toast('Rate filled from catalog: ' + fmt(p.rate));
+});
+$('itemsList').addEventListener('click', e => {
+  const btn = e.target.closest('[data-act]');
+  const card = e.target.closest('[data-id]');
+  if (!btn || !card) return;
+  const items = S.current.items;
+  const it = items.find(x => x.id === card.dataset.id);
+  if (!it) return;
+  vibrate();
+  if (btn.dataset.act === 'del') {
+    S.current.items = items.filter(x => x !== it);
+    save(); render();
+    return;
+  }
+  if (btn.dataset.act === 'inc') it.qty = round2(num(it.qty) + 1);
+  if (btn.dataset.act === 'dec') {
+    if (num(it.qty) <= 1) return toast('Use ✕ to remove the item');
+    it.qty = round2(num(it.qty) - 1);
+  }
+  card.querySelector('[data-f="qty"]').value = it.qty;
+  card.querySelector('.it-total').textContent = fmt(signedTotal(it));
+  save(); renderHeader(); renderHeld();
+});
+
+// Bottom actions
+$('holdBtn').onclick = holdCurrent;
+$('partialBtn').onclick = partialBill;
+$('chargesBtn').onclick = () => editAdjustment('charges');
+$('discountBtn').onclick = () => editAdjustment('discount');
+$('finalBtn').onclick = finalizeBill;
+$('noteInput').addEventListener('keydown', e => {
+  if (e.key === 'Escape') return $('suggestBox').classList.add('hidden');
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const p = getProduct(e.target.value);
+  if (calc.expr) pressKey('ADD');
+  else if (p) pickProduct(p);
+  else e.target.blur();
+});
+$('noteInput').addEventListener('input', renderSuggest);
+$('noteInput').addEventListener('focus', renderSuggest);
+$('noteInput').addEventListener('blur', () => setTimeout(() => $('suggestBox').classList.add('hidden'), 150));
+$('suggestBox').addEventListener('pointerdown', e => e.preventDefault());   // keep focus while tapping
+$('suggestBox').addEventListener('click', e => {
+  const b = e.target.closest('[data-key]');
+  const p = b && S.products.find(x => x.key === b.dataset.key);
+  if (p) pickProduct(p);
+});
+
+// Physical keyboard support (desktop / laptop)
+document.addEventListener('keydown', e => {
+  if (CLIENT_MODE) return;
+  if (modalOpen()) {
+    if (e.key === 'Escape') closeModal();
+    return;
+  }
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea') return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key;
+  let mapped = null;
+  if (/^[0-9]$/.test(k)) mapped = k;
+  else if (k === '.' || k === ',') mapped = '.';
+  else if (k === '*' || k === 'x' || k === 'X') mapped = 'x';
+  else if (k === '=') mapped = '=';
+  else if (k === 'Enter' || k === '+') mapped = 'ADD';
+  else if (k === 'Escape' || k === 'Delete') mapped = 'C';
+  else if (k === 'Backspace') mapped = 'BACK';
+  if (mapped) { e.preventDefault(); pressKey(mapped); }
+});
+
+// Save if the tab is being hidden/closed (belt & braces; we already save on change)
+document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+
+/* =====================================================================
+   12. PRODUCT MASTER CATALOG (auto-save & auto-fill)
+   Every named item that is added or edited is remembered with its rate.
+   Typing in the note field suggests saved products; picking one fills the rate.
+   ===================================================================== */
+const DEFAULT_NAME = /^(item|scrap item) \d+$/i;   // auto-generated names are not saved
+
+function upsertProduct(name, rate, type, bump = true) {
+  name = String(name || '').trim();
+  rate = round2(num(rate));
+  if (!name || DEFAULT_NAME.test(name) || rate <= 0) return;
+  const key = name.toLowerCase();
+  const p = S.products.find(x => x.key === key);
+  if (p) {
+    p.name = name; p.rate = rate; p.type = type || p.type; p.updatedAt = Date.now();
+    if (bump) p.uses = (p.uses || 0) + 1;
+  } else {
+    S.products.push({ key, name, rate, type: type || 'SALE', uses: 1, updatedAt: Date.now() });
+  }
+  refreshProductDatalist();
+}
+
+const getProduct = name => S.products.find(p => p.key === String(name || '').trim().toLowerCase()) || null;
+
+/** Best matches first: names that start with the query, then names containing it. */
+function findProducts(q, limit = 6) {
+  q = String(q || '').trim().toLowerCase();
+  if (!q) return [];
+  const starts = [], has = [];
+  S.products.forEach(p => { if (p.key.startsWith(q)) starts.push(p); else if (p.key.includes(q)) has.push(p); });
+  const byUse = (a, b) => (b.uses || 0) - (a.uses || 0);
+  return starts.sort(byUse).concat(has.sort(byUse)).slice(0, limit);
+}
+
+/** <datalist> used by the item-name inputs on the cards. */
+function refreshProductDatalist() {
+  const dl = $('productList');
+  if (dl) dl.innerHTML = S.products.slice(0, 500).map(p => `<option value="${esc(p.name)}"></option>`).join('');
+}
+
+/** Dropdown above the note field. */
+function renderSuggest() {
+  const box = $('suggestBox'), inp = $('noteInput');
+  const list = document.activeElement === inp ? findProducts(inp.value) : [];
+  if (!list.length) { box.classList.add('hidden'); return; }
+  box.innerHTML = list.map(p => `
+    <button type="button" data-key="${esc(p.key)}">
+      <span class="sg-name">${esc(p.name)} ${p.type === 'SCRAP' ? '<span class="tag scrap">SCRAP</span>' : ''}</span>
+      <b>${fmt(p.rate)}</b>
+    </button>`).join('');
+  box.classList.remove('hidden');
+}
+
+function pickProduct(p) {
+  $('noteInput').value = p.name;
+  calc.expr = String(p.rate) + 'x';     // rate filled, waiting for qty (ADD alone = qty 1)
+  $('suggestBox').classList.add('hidden');
+  $('noteInput').blur();                // close the phone keyboard so the keypad is usable
+  renderDisplay();
+  toast(`${p.name} @ ${fmt(p.rate)} — type qty, then ADD`);
+}
+
+function openProducts() {
+  openModal({
+    title: `Product Catalog (${S.products.length})`,
+    back: openMenu,
+    body: `
+      <p class="muted" style="font-size:13px;margin:0 0 10px">Products are saved automatically when you add a named item. Tap a product to change its rate.</p>
+      <input class="search" id="pSearch" type="search" placeholder="Search products…" autocomplete="off" />
+      <div id="pList"></div>`,
+    onMount: () => {
+      const draw = () => {
+        const q = $('pSearch').value.trim().toLowerCase();
+        const list = S.products.filter(p => !q || p.key.includes(q)).sort((a, b) => a.name.localeCompare(b.name));
+        $('pList').innerHTML = list.length ? list.map(p => `
+          <div class="row" data-key="${esc(p.key)}" role="button" tabindex="0">
+            <div class="row-main">
+              <div class="row-t">${esc(p.name)} ${p.type === 'SCRAP' ? '<span class="tag scrap">SCRAP</span>' : ''}</div>
+              <div class="row-s">Used ${p.uses || 0}× · ${fmtDate(p.updatedAt, false)}</div>
+            </div>
+            <div class="row-r"><div class="amt">${fmt(p.rate)}</div></div>
+            <button class="del" data-delp="${esc(p.key)}" aria-label="Delete product">✕</button>
+          </div>`).join('')
+          : `<div class="empty">${q ? 'No product matches.' : 'No products yet.<br>Type an item name in the note field before pressing ADD.'}</div>`;
+      };
+      draw();
+      $('pSearch').addEventListener('input', draw);
+      $('pList').addEventListener('click', e => {
+        const del = e.target.closest('[data-delp]');
+        if (del) {
+          S.products = S.products.filter(p => p.key !== del.dataset.delp);
+          save(); refreshProductDatalist(); draw();
+          return toast('Product removed');
+        }
+        const row = e.target.closest('[data-key]');
+        const p = row && S.products.find(x => x.key === row.dataset.key);
+        if (!p) return;
+        numberPrompt('Rate for ' + p.name, p.rate, 'New default rate used when this product is picked.', v => {
+          const r = round2(num(v));
+          if (r <= 0) return toast('Rate must be greater than 0');
+          p.rate = r; p.updatedAt = Date.now();
+          save(); openProducts(); toast('Rate updated');
+        });
+      });
+    }
+  });
+}
+
+/* =====================================================================
+   13. E-INVOICE LINKS (zero server)
+   The whole invoice is packed into the URL hash:  index.html#inv=<token>
+     token = <flag><base64url data>.<checksum>
+     flag  'z' = deflate-compressed JSON, 'j' = plain JSON
+   The hash part of a URL is never sent to a web server, so the invoice
+   data only travels inside the WhatsApp message.
+   NOTE: Base64 is an encoding, not encryption — anyone holding the link can
+   read it. The checksum only detects damaged or casually edited links.
+   ===================================================================== */
+const LINK_SALT = 'swiftbill-einvoice-v1';
+const LINK_TTL_MS = 3 * 24 * 60 * 60 * 1000;           // 3 days
+
+function b64urlEncode(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function b64urlDecode(str) {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) str += '=';
+  const bin = atob(str);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+async function streamBytes(bytes, transform) {
+  const stream = new Blob([bytes]).stream().pipeThrough(transform);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+/** FNV-1a 32-bit hash → short base36 checksum. */
+function checksum(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(36);
+}
+
+async function encodeInvoice(obj) {
+  let bytes = new TextEncoder().encode(JSON.stringify(obj));
+  let flag = 'j';
+  if (window.CompressionStream) {
+    try { bytes = await streamBytes(bytes, new CompressionStream('deflate-raw')); flag = 'z'; } catch (e) { /* keep plain */ }
+  }
+  const data = b64urlEncode(bytes);
+  return flag + data + '.' + checksum(LINK_SALT + flag + data);
+}
+
+async function decodeInvoice(token) {
+  const m = /^([jz])([A-Za-z0-9_-]+)\.([0-9a-z]+)$/.exec(token || '');
+  if (!m) throw new Error('format');
+  if (checksum(LINK_SALT + m[1] + m[2]) !== m[3]) throw new Error('checksum');
+  let bytes = b64urlDecode(m[2]);
+  if (m[1] === 'z') bytes = await streamBytes(bytes, new DecompressionStream('deflate-raw'));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+/** Compact payload with short keys to keep links short. */
+function invoicePayload(rec) {
+  return {
+    v: 1,
+    s: S.shopName || 'SWIFTBILL POS',
+    w: normalizePhone(S.shopWhatsApp),        // feedback goes back to this number
+    n: rec.no,
+    c: rec.customerName,
+    d: rec.date,                              // invoice date
+    g: Date.now(),                            // link generated at (expiry base)
+    e: rec.edited ? 1 : 0,
+    i: rec.items.map(it => [it.name, it.rate, it.qty, it.type === 'SCRAP' ? 1 : 0]),
+    ch: rec.charges || 0, di: rec.discount || 0,
+    ne: rec.net, ca: rec.cash, tn: rec.tendered, cg: rec.change || 0, du: rec.due,
+    pb: rec.prevBalance, nb: rec.newBalance, st: rec.status
+  };
+}
+
+/** Turn a decoded payload back into the record shape invoiceHTML() expects. */
+function payloadToRecord(p) {
+  const items = (p.i || []).map(a => {
+    const rate = round2(num(a[1])), qty = round2(num(a[2]));
+    return { name: String(a[0]), rate, qty, type: a[3] ? 'SCRAP' : 'SALE', total: round2(rate * qty) };
+  });
+  const sum = t => round2(items.filter(i => i.type === t).reduce((s, i) => s + i.total, 0));
+  return {
+    no: p.n, date: p.d, customerName: p.c || 'Customer', edited: !!p.e, items,
+    saleAmt: sum('SALE'), scrapAmt: sum('SCRAP'),
+    charges: num(p.ch), discount: num(p.di), net: num(p.ne), cash: num(p.ca),
+    tendered: p.tn, change: num(p.cg), due: num(p.du),
+    prevBalance: p.pb == null ? null : num(p.pb), newBalance: p.nb == null ? null : num(p.nb),
+    status: p.st || 'PAID'
+  };
+}
+
+/** "0300-1234567" → "923001234567" (uses the country code from Settings). */
+function normalizePhone(phone) {
+  let d = String(phone || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('00')) d = d.slice(2);
+  else if (d.startsWith('0')) d = (S.countryCode || '92') + d.slice(1);
+  return d.length >= 8 ? d : '';
+}
+
+/** Public address of this same index.html (where customers open links). */
+function invoiceBaseURL(allowLocal) {
+  if (S.invoiceBaseUrl) return S.invoiceBaseUrl.split('#')[0];
+  if (/^https?:$/.test(location.protocol)) return location.href.split('#')[0];
+  return allowLocal ? location.href.split('#')[0] : null;
+}
+
+async function buildInvoiceLink(rec, allowLocal) {
+  const base = invoiceBaseURL(allowLocal);
+  if (!base) return null;
+  return base + '#inv=' + await encodeInvoice(invoicePayload(rec));
+}
+
+function needPublicURL() {
+  confirmDialog('Public invoice page needed',
+    `Customers can't open a file stored on this device. Upload this same <b>index.html</b> to any free static host
+     (e.g. GitHub Pages or Netlify Drop) and paste that address in <b>Settings → Public invoice page URL</b>.<br><br>
+     Bill data is never uploaded — it travels inside the link itself.<br><br>
+     Tip: use <b>Preview</b> to test the customer view on this device.`,
+    'Open Settings', openMenu, 'primary');
+}
+
+async function sendEInvoice(rec) {
+  if (!invoiceBaseURL(false)) return needPublicURL();
+  const url = await buildInvoiceLink(rec, false).catch(() => null);
+  if (!url) return toast('Could not create the invoice link');
+  const cust = getCustomer(rec.customerId);
+  const phone = normalizePhone(cust && cust.phone);
+  const msg =
+    `Assalam o Alaikum ${rec.customerName},\n` +
+    `Your invoice #${rec.no} from *${S.shopName || 'SWIFTBILL POS'}*\n` +
+    `Net Payable: *${fmt(rec.net)}*\n` +
+    `Balance Due: *${fmt(rec.due)}*\n\n` +
+    `View your e-invoice and confirm the items here (link valid for 3 days):\n${url}`;
+  window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), '_blank');
+  if (!phone) toast('No customer phone saved — choose the chat in WhatsApp');
+}
+
+async function copyInvoiceLink(rec) {
+  const url = await buildInvoiceLink(rec, false).catch(() => null);
+  if (!url) return invoiceBaseURL(false) ? toast('Could not create the invoice link') : needPublicURL();
+  try { await navigator.clipboard.writeText(url); toast('E-invoice link copied'); }
+  catch (e) { showLinkText(url); }
+}
+/** Fallback when clipboard is blocked: show the link so it can be copied by hand. */
+function showLinkText(url) {
+  openModal({ title: 'E-invoice link', body: `<textarea class="fb-notes" readonly style="height:140px">${esc(url)}</textarea>` });
+}
+
+async function previewInvoiceLink(rec) {
+  const url = await buildInvoiceLink(rec, true).catch(() => null);
+  if (url) window.open(url, '_blank');
+  else toast('Could not create the invoice link');
+}
+
+/** Share bar shown above invoices in the shop app. */
+function eInvoiceBarHTML() {
+  return `
+    <div class="share-box">
+      <button class="btn wa" id="eiSend">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.3 14.2c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.2.1.4 0 .5l-.3.5-.4.4c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.6-.1l1.9.9c.3.1.5.2.5.3.1.2.1.7-.1 1.3Z"/></svg>
+        Send E-Invoice via WhatsApp
+      </button>
+      <div class="share-sub">
+        <button class="btn sm" id="eiCopy">Copy Link</button>
+        <button class="btn sm" id="eiPrev">Preview</button>
+        <span class="muted">Link expires in 3 days</span>
+      </div>
+    </div>`;
+}
+function wireEInvoiceBar(rec) {
+  $('eiSend').onclick = () => sendEInvoice(rec);
+  $('eiCopy').onclick = () => copyInvoiceLink(rec);
+  $('eiPrev').onclick = () => previewInvoiceLink(rec);
+}
+
+/* =====================================================================
+   14. CUSTOMER VIEW (same file, opened via #inv= link)
+   Read-only invoice + feedback sent back to the shop's WhatsApp.
+   ===================================================================== */
+async function bootClientView() {
+  CLIENT_MODE = true;
+  document.body.classList.add('client');
+  $('app').classList.add('hidden');
+  const cv = $('clientView');
+  cv.classList.remove('hidden');
+
+  let p;
+  try {
+    p = await decodeInvoice(decodeURIComponent(location.hash.slice(5)));
+  } catch (e) {
+    cv.innerHTML = clientMessage('⚠️', 'Invalid invoice link',
+      'This link is damaged or incomplete. Please ask the shop to send the invoice again.');
+    return;
+  }
+  S.shopName = p.s || 'SWIFTBILL POS';
+  document.title = `Invoice #${p.n} · ${S.shopName}`;
+
+  const generated = num(p.g) || num(p.d);
+  const expiresAt = generated + LINK_TTL_MS;
+  if (Date.now() > expiresAt) {
+    cv.innerHTML = clientMessage('⏰', 'This invoice link has expired after 3 days',
+      `Invoice #${esc(p.n)} from <b>${esc(S.shopName)}</b> was shared on ${esc(fmtDate(generated))}.
+       For your security, e-invoice links are only valid for 3 days. Please ask the shop to send a new link.`);
+    return;
+  }
+
+  const rec = payloadToRecord(p);
+  cv.innerHTML = `
+    <div class="cv-wrap">
+      <div class="cv-top">
+        <div class="logo">SB</div>
+        <div style="min-width:0">
+          <div class="cv-shop">${esc(S.shopName)}</div>
+          <div class="cv-sub">Digital invoice · valid until ${esc(fmtDate(expiresAt))}</div>
+        </div>
+      </div>
+      <div class="cv-card">${invoiceHTML(rec)}</div>
+
+      <div class="cv-card">
+        <div class="cv-h">Confirm your items</div>
+        <p class="muted" style="margin:0 0 12px;font-size:13px">Please check the items you received and let the shop know.</p>
+        <div class="fb-opts">
+          <button class="fb-opt ok" data-fb="ok">✅<span>Items Complete / Approved</span></button>
+          <button class="fb-opt bad" data-fb="issue">⚠️<span>Shortage / Issue Found</span></button>
+        </div>
+        <textarea class="fb-notes" id="fbNotes" maxlength="800" placeholder="Write your notes (e.g. 2 pcs Steel Bolt missing)…"></textarea>
+        <button class="btn wa" id="fbSend" style="width:100%">Send Feedback via WhatsApp</button>
+        ${p.w ? '' : '<p class="muted" style="font-size:12px;margin:8px 0 0">The shop has not set a WhatsApp number — you can pick the chat in WhatsApp.</p>'}
+        <button class="btn" id="cvPrint" style="width:100%;margin-top:8px">Print / Save as PDF</button>
+      </div>
+      <p class="center muted" style="font-size:11px">Generated by ${esc(S.shopName)} · SwiftBill POS</p>
+    </div>`;
+
+  let choice = null;
+  cv.querySelectorAll('[data-fb]').forEach(btn => btn.onclick = () => {
+    choice = btn.dataset.fb;
+    cv.querySelectorAll('[data-fb]').forEach(b => b.classList.toggle('sel', b === btn));
+    if (choice === 'issue') $('fbNotes').focus();
+  });
+  $('cvPrint').onclick = () => printReceipt(rec);
+  $('fbSend').onclick = () => {
+    const notes = $('fbNotes').value.trim();
+    if (!choice) return toast('Please choose Approved or Issue Found');
+    if (choice === 'issue' && !notes) { $('fbNotes').focus(); return toast('Please describe the shortage or issue'); }
+    const msg =
+      `*Invoice #${p.n} feedback* — ${S.shopName}\n` +
+      `Customer: ${rec.customerName}\n` +
+      `Invoice date: ${fmtDate(rec.date)}\n` +
+      `Net Payable: ${fmt(rec.net)}\n` +
+      `Status: ${choice === 'ok' ? '✅ Items Complete / Approved' : '⚠️ Shortage / Issue Found'}\n` +
+      (notes ? `Notes: ${notes}` : '');
+    window.open('https://wa.me/' + (p.w || '') + '?text=' + encodeURIComponent(msg), '_blank');
+  };
+}
+
+function clientMessage(icon, title, html) {
+  return `
+    <div class="cv-wrap">
+      <div class="cv-card cv-msg">
+        <div class="cv-icon">${icon}</div>
+        <h1>${esc(title)}</h1>
+        <p>${html}</p>
+      </div>
+    </div>`;
+}
+
+/* =====================================================================
+   15. BOOT
+   ===================================================================== */
+if (location.hash.startsWith('#inv=')) {
+  bootClientView();                    // customer opened a shared e-invoice link
+} else {
+  load();
+  save();
+  render();
+}
+// Switching between POS and an invoice link in the same tab → reload into the right mode
+window.addEventListener('hashchange', () => {
+  if (CLIENT_MODE || location.hash.startsWith('#inv=')) location.reload();
+});
+</script>
+</body>
+</html>
