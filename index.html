@@ -518,14 +518,34 @@
   .cv-sub { font-size: 12px; opacity: .85; margin-top: 2px; }
   .cv-card { background: #fff; border-radius: 16px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(15,23,42,.08); }
   .cv-h { font-weight: 900; font-size: 16px; margin-bottom: 4px; }
-  .fb-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  /* Big, full-width status options — one tap selects, the selected one turns solid */
+  .fb-opts { display: flex; flex-direction: column; gap: 10px; margin: 6px 0 14px; }
   .fb-opt {
-    display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px; border-radius: 12px;
-    border: 2px solid var(--line); background: var(--card); font-size: 22px;
+    width: 100%; min-height: 68px; display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+    border-radius: 14px; border: 2.5px solid; text-align: left; cursor: pointer;
+    transition: background .15s, color .15s, transform .08s, box-shadow .15s;
   }
-  .fb-opt span { font-size: 12px; font-weight: 800; color: var(--ink2); text-align: center; }
-  .fb-opt.ok.sel { border-color: var(--g3); background: #f0fdf4; }
-  .fb-opt.bad.sel { border-color: var(--amber); background: #fffbeb; }
+  .fb-opt:active { transform: scale(.98); }
+  .fb-opt.ok  { border-color: var(--g3); background: #f0fdf4; color: var(--g1); }
+  .fb-opt.bad { border-color: var(--amber); background: #fffbeb; color: #92400e; }
+  .fb-opt.ok.sel  { background: var(--g3); color: #fff; box-shadow: 0 6px 18px rgba(22,163,74,.35); }
+  .fb-opt.bad.sel { background: var(--amber); color: #fff; box-shadow: 0 6px 18px rgba(217,119,6,.35); }
+  .fb-ico { font-size: 26px; line-height: 1; }
+  .fb-txt { display: flex; flex-direction: column; min-width: 0; }
+  .fb-txt b { font-size: 17px; font-weight: 900; letter-spacing: .01em; }
+  .fb-txt small { font-size: 12px; font-weight: 600; opacity: .85; margin-top: 2px; }
+  .fb-dot {
+    flex: none; width: 24px; height: 24px; border-radius: 50%; border: 2.5px solid currentColor;
+    display: grid; place-items: center; background: #fff;
+  }
+  .fb-opt.sel .fb-dot { border-color: #fff; }
+  .fb-opt.sel .fb-dot::after { content: ""; width: 12px; height: 12px; border-radius: 50%; background: currentColor; }
+  .fb-opt.ok.sel .fb-dot::after { background: var(--g3); }
+  .fb-opt.bad.sel .fb-dot::after { background: var(--amber); }
+  .fb-label { display: block; font-size: 11px; font-weight: 800; letter-spacing: .08em; color: var(--muted); margin-bottom: 5px; }
+  .fb-send { width: 100%; height: 54px; font-size: 16px; text-decoration: none; }
+  .fb-send.off { background: #cbd5e1; border-color: #cbd5e1; color: #475569; }
+  .fb-to { font-size: 12px; color: var(--muted); text-align: center; margin: 8px 0 0; }
   .fb-notes {
     width: 100%; min-height: 90px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px;
     font: inherit; font-size: 15px; resize: vertical; outline: 0; background: var(--card); margin-bottom: 10px;
@@ -2393,39 +2413,83 @@ async function bootClientView() {
 
       <div class="cv-card">
         <div class="cv-h">Confirm your items</div>
-        <p class="muted" style="margin:0 0 12px;font-size:13px">Please check the items you received and let the shop know.</p>
-        <div class="fb-opts">
-          <button class="fb-opt ok" data-fb="ok">✅<span>Items Complete / Approved</span></button>
-          <button class="fb-opt bad" data-fb="issue">⚠️<span>Shortage / Issue Found</span></button>
+        <p class="muted" style="margin:0 0 12px;font-size:13px">Step 1 — tap one option. Step 2 — add a note (optional). Step 3 — send.</p>
+        <div class="fb-opts" role="radiogroup" aria-label="Feedback status">
+          <button type="button" class="fb-opt ok" data-fb="ok" role="radio" aria-checked="false">
+            <span class="fb-dot" aria-hidden="true"></span>
+            <span class="fb-ico" aria-hidden="true">✅</span>
+            <span class="fb-txt"><b>Approved</b><small>Items complete — all received</small></span>
+          </button>
+          <button type="button" class="fb-opt bad" data-fb="issue" role="radio" aria-checked="false">
+            <span class="fb-dot" aria-hidden="true"></span>
+            <span class="fb-ico" aria-hidden="true">⚠️</span>
+            <span class="fb-txt"><b>Issue Found</b><small>Shortage, damage or wrong item</small></span>
+          </button>
         </div>
-        <textarea class="fb-notes" id="fbNotes" maxlength="800" placeholder="Write your notes (e.g. 2 pcs Steel Bolt missing)…"></textarea>
-        <button class="btn wa" id="fbSend" style="width:100%">Send Feedback via WhatsApp</button>
-        ${p.w ? '' : '<p class="muted" style="font-size:12px;margin:8px 0 0">The shop has not set a WhatsApp number — you can pick the chat in WhatsApp.</p>'}
+        <label class="fb-label" for="fbNotes">NOTE (OPTIONAL)</label>
+        <textarea class="fb-notes" id="fbNotes" maxlength="800" placeholder="e.g. 2 pcs Steel Bolt missing"></textarea>
+        <!-- A real link (not window.open) so in-app browsers like WhatsApp's never block it -->
+        <a class="btn wa fb-send off" id="fbSend" href="#" rel="noopener" role="button" aria-disabled="true">
+          Send Feedback via WhatsApp
+        </a>
+        <p class="fb-to" id="fbTo">${p.w
+          ? 'Will be sent to the shop: <b>+' + esc(p.w) + '</b>'
+          : 'The shop has not saved a WhatsApp number — WhatsApp will ask you to choose the chat.'}</p>
         <button class="btn" id="cvPrint" style="width:100%;margin-top:8px">Print / Save as PDF</button>
       </div>
       <p class="center muted" style="font-size:11px">Generated by ${esc(S.shopName)} · SwiftBill POS</p>
     </div>`;
 
-  let choice = null;
-  cv.querySelectorAll('[data-fb]').forEach(btn => btn.onclick = () => {
+  let choice = null;              // 'ok' | 'issue'
+  const sendBtn = $('fbSend');
+  const notesEl = $('fbNotes');
+
+  /** WhatsApp message for the current choice + note. */
+  const feedbackMessage = () => {
+    const notes = notesEl.value.trim();
+    return [
+      `*Invoice #${p.n} — Customer Feedback*`,
+      `Shop: ${S.shopName}`,
+      `Customer: ${rec.customerName}`,
+      `Invoice date: ${fmtDate(rec.date)}`,
+      `Net Payable: ${fmt(rec.net)}`,
+      `Status: ${choice === 'ok' ? '✅ APPROVED (items complete)' : '⚠️ ISSUE FOUND (shortage / problem)'}`,
+      `Note: ${notes || '—'}`
+    ].join('\n');
+  };
+
+  /** Keep the send link's href in sync so a tap opens WhatsApp natively. */
+  const refreshSend = () => {
+    const ready = !!choice;
+    sendBtn.classList.toggle('off', !ready);
+    sendBtn.setAttribute('aria-disabled', String(!ready));
+    sendBtn.href = ready
+      ? 'https://wa.me/' + (p.w || '') + '?text=' + encodeURIComponent(feedbackMessage())
+      : '#';
+    sendBtn.textContent = ready
+      ? (choice === 'ok' ? 'Send “Approved” via WhatsApp' : 'Send “Issue Found” via WhatsApp')
+      : 'Select Approved or Issue Found first';
+  };
+
+  cv.querySelectorAll('[data-fb]').forEach(btn => btn.addEventListener('click', () => {
     choice = btn.dataset.fb;
-    cv.querySelectorAll('[data-fb]').forEach(b => b.classList.toggle('sel', b === btn));
-    if (choice === 'issue') $('fbNotes').focus();
+    cv.querySelectorAll('[data-fb]').forEach(b => {
+      b.classList.toggle('sel', b === btn);
+      b.setAttribute('aria-checked', String(b === btn));
+    });
+    refreshSend();
+  }));
+  notesEl.addEventListener('input', refreshSend);
+  sendBtn.addEventListener('click', e => {
+    if (!choice) {
+      e.preventDefault();
+      toast('Please tap Approved or Issue Found first');
+      return;
+    }
+    refreshSend();            // make sure the very latest note is in the link; default navigation opens WhatsApp
   });
   $('cvPrint').onclick = () => printReceipt(rec);
-  $('fbSend').onclick = () => {
-    const notes = $('fbNotes').value.trim();
-    if (!choice) return toast('Please choose Approved or Issue Found');
-    if (choice === 'issue' && !notes) { $('fbNotes').focus(); return toast('Please describe the shortage or issue'); }
-    const msg =
-      `*Invoice #${p.n} feedback* — ${S.shopName}\n` +
-      `Customer: ${rec.customerName}\n` +
-      `Invoice date: ${fmtDate(rec.date)}\n` +
-      `Net Payable: ${fmt(rec.net)}\n` +
-      `Status: ${choice === 'ok' ? '✅ Items Complete / Approved' : '⚠️ Shortage / Issue Found'}\n` +
-      (notes ? `Notes: ${notes}` : '');
-    window.open('https://wa.me/' + (p.w || '') + '?text=' + encodeURIComponent(msg), '_blank');
-  };
+  refreshSend();
 }
 
 function clientMessage(icon, title, html) {
