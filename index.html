@@ -640,7 +640,7 @@
     font-variant-numeric: tabular-nums; text-rendering: geometricPrecision;
   }
   #printArea.measure { display: block; position: absolute; left: -10000px; top: 0; visibility: hidden; }
-  #printArea .slip { --u: 1px; padding: calc(10 * var(--u)) calc(15 * var(--u)) calc(22 * var(--u)); }
+  #printArea .slip { --u: 1px; padding: calc(10 * var(--u)) calc(var(--edge-px, 15.12) * var(--u)) calc(22 * var(--u)); }
   #printArea * { color: #000 !important; border-color: #000 !important; background: transparent !important; box-shadow: none !important; }
   #printArea .inv { font-size: calc(16 * var(--u)); line-height: 1.28; font-weight: 600; }
   #printArea .inv-head { padding: 0 0 calc(7 * var(--u)); border-bottom: calc(2.5 * var(--u)) solid; }
@@ -702,7 +702,7 @@
       width: 100% !important; max-width: none !important; margin: 0 !important; padding: 0 !important;
       -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
-    #printArea .slip { --u: calc(100vw / 302.36); }
+    #printArea .slip { --u: calc(100vw / var(--paper-px, 302.36)); }
     #printArea .inv-head, #printArea .inv-meta, #printArea .inv-sum, #printArea .inv-count,
     #printArea .inv-policy, #printArea .inv-sign, #printArea tr { page-break-inside: avoid; break-inside: avoid; }
     #printArea .inv-sec { page-break-after: avoid; break-after: avoid; }
@@ -1287,7 +1287,9 @@ function defaultState() {
     shopWhatsApp: '',   // feedback from customers is sent here
     countryCode: '92',  // for local numbers like 03001234567
     invoiceBaseUrl: '', // public address of this index.html for e-invoice links
-    printPaged: null    // true: printer's own paper length; false: one exact-length slip; null: auto (see printPagedMode)
+    printPaged: null,   // true: printer's own paper length; false: one exact-length slip; null: auto (see printPagedMode)
+    printerHost: '',    // Direct Wi-Fi print: printer IP on the shop's local network
+    printerPort: ''     // Direct Wi-Fi print: raw ESC/POS port (often 9100 — confirm with a test print)
   };
 }
 
@@ -2332,11 +2334,12 @@ function showBillDetail(rec, onBack) {
              <button class="btn f3" id="bCopy">Re-bill</button>
              <button class="btn f3" id="bShare">Share</button>
              <button class="btn f2" id="bPrint">🖨 Print</button>
-             <button class="btn f2 primary" id="bPdf">⬇ Download Full PDF</button>`,
+             <button class="btn f2 primary" id="bPdf">⬇ Download Full PDF</button>${wifiPrintButtonHTML('bWifi')}`,
     footerClass: 'wrap',
     onMount: () => {
       wireEInvoiceBar(rec);
       $('bPrint').onclick = () => printReceipt(rec);
+      if ($('bWifi')) $('bWifi').onclick = () => directPrintReceipt(rec);
       $('bPdf').onclick = e => downloadInvoicePDF(rec, e.currentTarget);
       $('bShare').onclick = () => shareReceipt(rec);
       $('bEdit').onclick = () => reopenBill(rec);
@@ -2362,11 +2365,12 @@ function showReceipt(rec) {
              <button class="btn f3" id="rShare">Share</button>
              <button class="btn f3 primary" id="rDone">New Bill</button>
              <button class="btn f2" id="rPrint">🖨 Print</button>
-             <button class="btn f2 indigo" id="rPdf">⬇ Download Full PDF</button>`,
+             <button class="btn f2 indigo" id="rPdf">⬇ Download Full PDF</button>${wifiPrintButtonHTML('rWifi')}`,
     footerClass: 'wrap',
     onMount: () => {
       wireEInvoiceBar(rec);
       $('rPrint').onclick = () => printReceipt(rec);
+      if ($('rWifi')) $('rWifi').onclick = () => directPrintReceipt(rec);
       $('rPdf').onclick = e => downloadInvoicePDF(rec, e.currentTarget);
       $('rShare').onclick = () => shareReceipt(rec);
       $('rEdit').onclick = () => reopenBill(rec);
@@ -2423,7 +2427,8 @@ async function shareReceipt(rec) {
 /* Print: one continuous slip on an 80 mm thermal roll. The slip is laid out
    off-screen at the print width, measured, and an @page rule of exactly that
    height is injected (the working form of "size: 80mm auto"). */
-const PRINT_W_MM = 80;             // roll width (content has 4 mm margins each side → 72 mm)
+const PRINT_W_MM = 80;             // paper roll width
+const PRINTABLE_W_MM = 72;         // width the print head can reach (80 mm rolls: 72 mm; adjust for your printer)
 const PX_TO_MM = 25.4 / 96;        // CSS px → mm
 const PAGE_SAFETY_MM = 2;          // measured height + this, so no blank 2nd page appears
 const MAX_PAGE_MM = 5000;          // ~200 in: largest single page Chrome/PDF handle reliably
@@ -2439,12 +2444,19 @@ function printReceipt(rec) {
 }
 
 /** Print any slip (invoice, deposit receipt, statement) as one continuous page. */
+let printPending = false;   // ignores a double tap while a print is being prepared
+
 function printHTML(html) {
+  if (printPending) return;
+  printPending = true;
   const pa = $('printArea');
-  pa.innerHTML = '<div class="slip">' + html + '</div>';
-  // Measure only once the receipt font is ready, or the height comes out wrong
+  // One hidden container, overwritten on every print: nothing accumulates
+  pa.style.width = PRINT_W_MM + 'mm';
+  pa.innerHTML = `<div class="slip" style="--paper-px:${(PRINT_W_MM / PX_TO_MM).toFixed(2)};--edge-px:${((PRINT_W_MM - PRINTABLE_W_MM) / 2 / PX_TO_MM).toFixed(2)}">` + html + '</div>';
+  // Measure only once the receipt font (and any image) is ready, or the height comes out wrong
   const fontReady = document.fonts && document.fonts.load ? document.fonts.load('900 16px "SB Receipt"') : Promise.resolve();
-  fontReady.then(() => sizeAndPrint(pa), () => sizeAndPrint(pa));
+  const imgsReady = [...pa.querySelectorAll('img')].map(img => img.complete ? null : new Promise(r => { img.onload = img.onerror = r; }));
+  Promise.all([fontReady, ...imgsReady]).catch(() => {}).then(() => sizeAndPrint(pa));
 }
 
 function sizeAndPrint(pa) {
@@ -2468,15 +2480,17 @@ function sizeAndPrint(pa) {
     // the slip still fills the full paper width and rows never split.
     st.textContent = '@page { margin: 0; }';
   } else if (hMm <= MAX_PAGE_MM) {
-    st.textContent = `@page { size: ${PRINT_W_MM}mm ${hMm}mm; margin: 0; }
-      @media print { #printArea .inv { page-break-inside: avoid; break-inside: avoid; } }`;
+    // Page = the receipt's own measured length (honoured by desktop Chrome / Save as PDF)
+    st.textContent = `@page { size: ${PRINT_W_MM}mm ${hMm}mm; margin: 0; }`;
   } else {
-    // Longer than any single sheet can be: paginate cleanly (rows never split)
-    st.textContent = `@page { size: ${PRINT_W_MM}mm 1000mm; margin: 0; }`;
+    // Longer than any single sheet can be: use the printer's paper length (rows never split)
+    st.textContent = '@page { margin: 0; }';
     toast('Very long bill — printing on several pages. Use “Download Full PDF” for one page.');
   }
   // Let the new page size and layout apply before the print dialog snapshots the page
-  requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    try { window.print(); } finally { setTimeout(() => { printPending = false; }, 800); }
+  }));
 }
 
 /* =====================================================================
@@ -2505,6 +2519,15 @@ function openMenu() {
         <div class="hint">“One continuous slip” prints the bill as one page of exactly its length (best on PC).
           “Printer paper length” fills the paper chosen in the print dialog at full size and continues on the next
           roll length (best on Android phones, and for any printer where slips come out small).</div></div>
+      <div class="field"><label>DIRECT WI-FI PRINTER (ESC/POS, same Wi-Fi as this phone)</label>
+        <div class="range">
+          <label>PRINTER IP<input id="sPrIp" inputmode="decimal" value="${esc(S.printerHost)}" placeholder="192.168.1.100" autocomplete="off" /></label>
+          <label style="flex:0 0 92px">PORT<input id="sPrPort" inputmode="numeric" value="${esc(S.printerPort)}" placeholder="9100" maxlength="5" autocomplete="off" /></label>
+        </div>
+        <button type="button" class="btn" style="width:100%" id="sPrTest">📶 Test printer</button>
+        <div class="hint">Adds a “Wi-Fi Print” button to invoices: one continuous slip with a single cut, no print
+          dialog. Needs the SwiftBill Android app (version 1.1.0 or newer). The printer IP is on its self-test page;
+          leave empty to turn this off. Bills are sent only to this printer, never to the internet.</div></div>
       <button class="btn" style="width:100%;margin-bottom:12px" id="sProducts">📦 Product Catalog (${S.products.length})</button>
       <div class="stats">
         <div class="stat"><div class="stat-l">CUSTOMERS</div><div class="stat-v">${S.customers.length}</div></div>
@@ -2530,7 +2553,16 @@ function openMenu() {
         S.invoiceBaseUrl = url.split('#')[0];
         const paged = $('sPrint').querySelector('.on').dataset.paged === '1';
         if (paged !== printPagedMode()) S.printPaged = paged;   // keep "auto" unless changed
+        const pr = readPrinterFields();
+        if (pr.error) return toast(pr.error);
+        S.printerHost = pr.host; S.printerPort = pr.port;
         save(); renderHeader(); closeModal(); toast('Settings saved');
+      };
+      $('sPrTest').onclick = () => {
+        const pr = readPrinterFields();
+        if (pr.error) return toast(pr.error);
+        if (!pr.host) return toast('Enter the printer IP first');
+        sendDirectPrint(escposTestJob(pr.host, pr.port), 'Test print', pr.host, pr.port);
       };
       $('sPrint').querySelectorAll('button').forEach(b => b.onclick = () => {
         $('sPrint').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
@@ -3660,6 +3692,213 @@ function openStatement(customerId, onBack, range) {
     }
   });
 }
+
+/* =====================================================================
+   17. DIRECT THERMAL PRINT JOB (ESC/POS)
+   Builds one complete print job for an 80 mm ESC/POS printer: text mode,
+   Font A = 48 columns, any length (no pages), one cut at the very end.
+   Read-only: it never changes the bill, invoice numbers or saved data.
+   Sending the bytes to the printer needs a transport that can open a
+   network socket (Android bridge / print app) — a browser page cannot.
+   ===================================================================== */
+const ESCPOS_COLS = 48;   // 80 mm paper, Font A (12x24): 576 dots / 12
+
+/** Printer fonts are ASCII here: replace anything else so the job never breaks. */
+function escposAscii(s) {
+  return String(s == null ? '' : s)
+    .normalize('NFKD').replace(/[̀-ͯ]/g, '')
+    .replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...')
+    .replace(/[^\x20-\x7e]/g, '?');
+}
+
+/** Word-wrap to a column width; long words are split. */
+function escposWrap(s, width) {
+  const out = [];
+  let line = '';
+  for (let word of escposAscii(s).split(/\s+/).filter(Boolean)) {
+    while (word.length > width) {
+      if (line) { out.push(line); line = ''; }
+      out.push(word.slice(0, width)); word = word.slice(width);
+    }
+    if (!line) line = word;
+    else if (line.length + 1 + word.length <= width) line += ' ' + word;
+    else { out.push(line); line = word; }
+  }
+  if (line || !out.length) out.push(line);
+  return out;
+}
+
+const escposPad = (s, w, right) => {
+  s = escposAscii(s);
+  if (s.length > w) s = s.slice(0, w);
+  return right ? s.padStart(w) : s.padEnd(w);
+};
+
+/** "Left ..... Right" on one line (right side wins if both don't fit). */
+function escposLR(left, right, cols = ESCPOS_COLS) {
+  left = escposAscii(left); right = escposAscii(right);
+  if (left.length + 1 + right.length > cols) return [left, right.padStart(cols)];
+  return [left + right.padStart(cols - left.length)];
+}
+
+function receiptEscPos(rec) {
+  const ESC = 0x1b, GS = 0x1d;
+  const bytes = [];
+  const raw = (...b) => bytes.push(...b);
+  const text = s => { for (const ch of escposAscii(s)) bytes.push(ch.charCodeAt(0)); };
+  const line = (s = '') => { text(s); raw(0x0a); };
+  const align = a => raw(ESC, 0x61, a);              // 0 left, 1 centre, 2 right
+  const bold = on => raw(ESC, 0x45, on ? 1 : 0);
+  const size = (w, h) => raw(GS, 0x21, ((w - 1) << 4) | (h - 1));
+  const rule = (ch = '-') => line(ch.repeat(ESCPOS_COLS));
+
+  const d = new Date(rec.date);
+  const sales = rec.items.filter(it => it.type !== 'SCRAP');
+  const scraps = rec.items.filter(it => it.type === 'SCRAP');
+  const qtyTotal = round2(rec.items.reduce((s, it) => s + num(it.qty), 0));
+  const cashLabel = rec.cash < 0 ? 'Cash Paid Out' : 'Cash Received';
+  const cashShown = rec.cash < 0 ? -(rec.tendered != null ? rec.tendered : -rec.cash) : (rec.tendered != null ? rec.tendered : rec.cash);
+
+  // Item table: # (3) | description (19) | qty (5) | rate (9) | total (12) = 48
+  const W = [3, 19, 5, 9, 12];
+  const row = (c) => line(escposPad(c[0], W[0]) + escposPad(c[1], W[1]) + escposPad(c[2], W[2], true) + escposPad(c[3], W[3], true) + escposPad(c[4], W[4], true));
+  const itemRows = (list, neg) => list.forEach((it, i) => {
+    const name = escposWrap(it.name, W[1] - 1);
+    row([String(i + 1), name[0], (neg ? '-' : '') + it.qty, round2(it.rate).toLocaleString('en-US'), fmt(neg ? -it.total : it.total)]);
+    name.slice(1).forEach(n => line(' '.repeat(W[0]) + n));
+  });
+  const table = (title, list, neg) => {
+    bold(true); line(title); bold(false);
+    row(['#', 'DESCRIPTION', 'QTY', 'RATE', 'TOTAL']);
+    rule();
+    if (list.length) itemRows(list, neg); else { align(1); line('No sale items'); align(0); }
+    rule();
+  };
+
+  raw(ESC, 0x40);                 // initialise
+  raw(ESC, 0x74, 0);              // code page PC437 (ASCII)
+  align(1); bold(true); size(2, 2);
+  escposWrap(S.shopName || 'SWIFTBILL POS', ESCPOS_COLS / 2).forEach(l => line(l));
+  size(1, 1); bold(false);
+  line('C U S T O M E R   I N V O I C E');
+  align(0); rule('=');
+  escposLR('Bill No: #' + rec.no + (rec.edited ? ' (edited)' : ''), d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })).forEach(l => line(l));
+  const cust = escposWrap('Customer: ' + rec.customerName, ESCPOS_COLS - 10);
+  escposLR(cust[0], d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })).forEach(l => line(l));
+  cust.slice(1).forEach(l => line(l));
+  rule();
+
+  table('SALE ITEMS', sales, false);
+  if (scraps.length) table('SCRAP / DEDUCTION', scraps, true);
+
+  const sum = (l, r) => escposLR(l, r).forEach(x => line(x));
+  sum('Sale Amount', fmt(rec.saleAmt));
+  sum('Scrap Deduction', fmt(-rec.scrapAmt));
+  if (rec.charges) sum('Charges', '+ ' + fmt(rec.charges));
+  if (rec.discount) sum('Discount', fmt(-rec.discount));
+  rule('=');
+  bold(true); size(1, 2);
+  sum('NET PAYABLE', fmt(rec.net));
+  size(1, 1); bold(false);
+  rule('=');
+  sum(cashLabel, fmt(cashShown));
+  if (rec.change) sum('Change Returned', fmt(rec.change));
+  bold(true); size(1, 2);
+  sum('BALANCE DUE', fmt(rec.due));
+  size(1, 1); bold(false);
+  if (rec.prevBalance != null) {
+    sum('Previous Balance', fmt(rec.prevBalance));
+    bold(true); sum('Total Khata Balance', fmt(rec.newBalance)); bold(false);
+  }
+  rule();
+  sum('Total Items / Qty', `${rec.items.length} items / ${qtyTotal} pcs`);
+  rule();
+  align(1);
+  escposWrap('Goods once sold can be exchanged within 7 days with this invoice in original condition. ' +
+    'No cash refunds. Scrap / returned items are deducted at the agreed rate. Thank you for your business!', ESCPOS_COLS).forEach(l => line(l));
+  align(0);
+  line(); line(); line();
+  line('_'.repeat(20) + ' '.repeat(8) + '_'.repeat(20));
+  line('    Record Copy' + ' '.repeat(18) + 'Auth. Sign');
+  raw(ESC, 0x64, 4);              // feed 4 lines past the cutter
+  raw(GS, 0x56, 0x42, 0);         // single partial cut (printers without a cutter ignore it)
+  return new Uint8Array(bytes);
+}
+
+/** Short job to confirm the IP, port and ESC/POS support with real paper. */
+function escposTestJob(host, port) {
+  const ESC = 0x1b, GS = 0x1d, bytes = [ESC, 0x40, ESC, 0x74, 0, ESC, 0x61, 1, ESC, 0x45, 1, GS, 0x21, 0x11];
+  const line = t => { for (const ch of escposAscii(t)) bytes.push(ch.charCodeAt(0)); bytes.push(0x0a); };
+  line(S.shopName || 'SWIFTBILL POS');
+  bytes.push(GS, 0x21, 0, ESC, 0x45, 0);
+  line('Direct Wi-Fi print test');
+  line(host + ':' + port);
+  line(new Date().toLocaleString());
+  line('-'.repeat(ESCPOS_COLS));
+  line('If you can read this and the paper was');
+  line('cut once below, Wi-Fi printing works.');
+  bytes.push(ESC, 0x64, 4, GS, 0x56, 0x42, 0);
+  return new Uint8Array(bytes);
+}
+
+/** Only addresses on a local network are accepted (never the internet). */
+function isPrivateIPv4(h) {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h || '');
+  if (!m) return false;
+  const [a, b] = [+m[1], +m[2]];
+  if ([m[1], m[2], m[3], m[4]].some(x => +x > 255)) return false;
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+}
+
+function readPrinterFields() {
+  const host = $('sPrIp').value.trim(), portTxt = $('sPrPort').value.trim();
+  if (!host && !portTxt) return { host: '', port: '' };
+  if (!isPrivateIPv4(host)) return { error: 'Printer IP must be a local address like 192.168.1.100' };
+  const port = parseInt(portTxt, 10);
+  if (!/^\d{1,5}$/.test(portTxt) || port < 1 || port > 65535) return { error: 'Enter the printer port (1–65535), e.g. 9100' };
+  return { host, port: String(port) };
+}
+
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+
+function wifiPrintButtonHTML(id) {
+  return S.printerHost && S.printerPort && IS_ANDROID ? `<button class="btn f2" id="${id}">📶 Wi-Fi Print</button>` : '';
+}
+
+function bytesToBase64Url(bytes) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** Link that hands the job to SwiftBill's Android app; Chrome opens the fallback if the app can't. */
+function directPrintIntentUrl(bytes, label, host, port) {
+  const q = `h=${encodeURIComponent(host)}&p=${encodeURIComponent(port)}&n=${encodeURIComponent(label)}&d=${bytesToBase64Url(bytes)}`;
+  const fallback = location.href.split('#')[0] + DIRECT_PRINT_MISSING;
+  return `intent://job?${q}#Intent;scheme=swiftbill-print;package=com.swiftbill.pos;S.browser_fallback_url=${encodeURIComponent(fallback)};end`;
+}
+const DIRECT_PRINT_MISSING = '#directprint-unavailable';
+
+function sendDirectPrint(bytes, label, host, port) {
+  if (!IS_ANDROID) return toast('Wi-Fi printing works in the SwiftBill Android app');
+  const a = document.createElement('a');
+  a.href = directPrintIntentUrl(bytes, label, host, port);
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+/** Read-only: builds the job from the saved bill; never changes bills or invoice numbers. */
+function directPrintReceipt(rec) {
+  sendDirectPrint(receiptEscPos(rec), 'Invoice #' + rec.no, S.printerHost, S.printerPort);
+}
+
+// The app is missing or too old: Chrome opened the fallback address instead
+window.addEventListener('hashchange', () => {
+  if (location.hash !== DIRECT_PRINT_MISSING) return;
+  history.replaceState(null, '', location.href.split('#')[0]);
+  confirmDialog('Wi-Fi Print needs the SwiftBill app',
+    'Direct Wi-Fi printing works only in the SwiftBill Android app, version 1.1.0 or newer. Install or update the app, ' +
+    'or use the normal 🖨 Print button.', 'OK', () => {});
+});
 
 /* =====================================================================
    15. BOOT
