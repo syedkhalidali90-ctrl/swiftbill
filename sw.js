@@ -10,15 +10,15 @@
 
   Bump CACHE_VERSION if you rename/remove files listed in APP_SHELL.
 */
-const CACHE_VERSION = 'swiftbill-v1';
+const CACHE_VERSION = 'swiftbill-v2';
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.json',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/maskable-192.png',
-  './icons/maskable-512.png'
+  './icon-192.png',
+  './icon-512.png',
+  './maskable-192.png',
+  './maskable-512.png'
 ];
 const NETWORK_TIMEOUT_MS = 4000;
 
