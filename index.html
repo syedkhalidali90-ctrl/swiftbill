@@ -3957,7 +3957,7 @@ function escposLR(left, right, cols = ESCPOS_COLS) {
 
 function receiptEscPos(rec) {
   const ESC = 0x1b, GS = 0x1d;
-  const W = ESCPOS_COLS;                 // 48 characters
+  const W = ESCPOS_COLS;                 // 48 characters (Font A, 80 mm)
   const bytes = [];
   const raw = (...b) => bytes.push(...b);
   const text = s => { for (const ch of escposAscii(s)) bytes.push(ch.charCodeAt(0)); };
@@ -3967,6 +3967,10 @@ function receiptEscPos(rec) {
   const size = (w, h) => raw(GS, 0x21, ((w - 1) << 4) | (h - 1));
   const amt = n => round2(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
   const centre = (s, w) => { s = escposAscii(s); const l = Math.floor((w - s.length) / 2); return (' '.repeat(Math.max(0, l)) + s).padEnd(w); };
+  // Thin full-width rule. ASCII only: '-' prints as a fine dashed rule on every ESC/POS
+  // printer. Printed with reduced line spacing (ESC 3) so it sits right under the row
+  // above without adding a blank-looking gap; normal spacing restored after (ESC 2).
+  const rule = (ch = '-') => { raw(ESC, 0x33, 16); line(ch.repeat(W)); raw(ESC, 0x32); };
 
   const d = new Date(rec.date);
   const sales = rec.items.filter(it => it.type !== 'SCRAP');
@@ -3983,103 +3987,82 @@ function receiptEscPos(rec) {
   escposWrap(S.shopName || 'SWIFTBILL POS', W / 2).forEach(l => line(l));
   size(1, 1); bold(false);
   line('C U S T O M E R   I N V O I C E');
-  align(0); line();
+  align(0);
+  rule('=');
 
-  // ---- Boxed bill details: | Bill No | Date |  | Customer | Time | ----
-  const c1 = 21, c2 = 20;                                    // "| " c1 " | " c2 " |" = 48
-  const rule2 = '+' + '-'.repeat(c1 + 2) + '+' + '-'.repeat(c2 + 2) + '+';
-  const cells = (a, b) => '| ' + escposPad(a, c1) + ' | ' + escposPad(b, c2, true) + ' |';
-  const metaBlock = (l1, v1, l2, v2) => {
-    line(cells(l1, l2));
-    const left = escposWrap(v1, c1), right = escposWrap(v2, c2);
+  // ---- Bill details: two aligned columns, values bold ----
+  const meta = (l1, v1, l2, v2) => {
+    const left = escposWrap(l1 + ': ' + v1, 30), right = escposAscii(l2 + ': ' + v2);
     bold(true);
-    for (let i = 0; i < Math.max(left.length, right.length); i++) line(cells(left[i] || '', right[i] || ''));
+    escposLR(left[0], right).forEach(l => line(l));
+    left.slice(1).forEach(l => line(l));
     bold(false);
   };
-  line(rule2);
-  metaBlock('BILL NO', '#' + rec.no + (rec.edited ? ' (edited)' : ''), 'DATE', d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }));
-  line(rule2);
-  metaBlock('CUSTOMER', rec.customerName, 'TIME', d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
-  line(rule2);
+  meta('Bill No', '#' + rec.no + (rec.edited ? ' (edited)' : ''), 'Date', d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }));
+  meta('Customer', rec.customerName, 'Time', d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
+  rule('=');
 
-  // ---- Boxed item tables: | # | DESCRIPTION | QTY | RATE | TOTAL | ----
+  // ---- Item tables: # DESCRIPTION QTY RATE TOTAL, no borders, rule under every item ----
   const table = (title, list, neg) => {
     line(); bold(true); line(title); bold(false);
-    if (!list.length) {
-      line('+' + '-'.repeat(W - 2) + '+'); line('|' + centre('No sale items', W - 2) + '|'); line('+' + '-'.repeat(W - 2) + '+');
-      return;
-    }
+    if (!list.length) { line(centre('No sale items', W)); rule(); return; }
     const rows = list.map((it, i) => ({ n: String(i + 1), name: it.name, q: (neg ? '-' : '') + it.qty, r: amt(it.rate), t: amt(neg ? -it.total : it.total) }));
-    const wN = Math.max(1, ...rows.map(x => x.n.length));
+    const wN = Math.max(2, ...rows.map(x => x.n.length));
     const wQ = Math.max(3, ...rows.map(x => x.q.length));
     const wR = Math.max(4, ...rows.map(x => x.r.length));
     const wT = Math.max(5, ...rows.map(x => x.t.length));
-    // 6 border characters + 1 space either side of each cell (10) = 16
-    const wD = W - 16 - wN - wQ - wR - wT;
+    const wD = W - 4 - wN - wQ - wR - wT;          // one space between the five columns
     if (wD >= 10) {
-      const sep = ch => '+' + [wN, wD, wQ, wR, wT].map(w => ch.repeat(w + 2)).join('+') + '+';
-      const fmtRow = (a, b, c, e, f) => '| ' + escposPad(a, wN, true) + ' | ' + escposPad(b, wD) + ' | ' + centre(c, wQ) + ' | ' + escposPad(e, wR, true) + ' | ' + escposPad(f, wT, true) + ' |';
-      line(sep('-'));
+      const fmtRow = (a, b, c, e, f) => escposPad(a, wN) + ' ' + escposPad(b, wD) + ' ' + escposPad(c, wQ, true) + ' ' + escposPad(e, wR, true) + ' ' + escposPad(f, wT, true);
       bold(true); line(fmtRow('#', 'DESCRIPTION', 'QTY', 'RATE', 'TOTAL')); bold(false);
-      line(sep('='));
+      rule('=');
       rows.forEach(x => {
         const name = escposWrap(x.name, wD);
         line(fmtRow(x.n, name[0], x.q, x.r, x.t));
-        name.slice(1).forEach(n => line(fmtRow('', n, '', '', '')));
-        line(sep('-'));                                       // line after every item
+        name.slice(1).forEach(n => line(fmtRow('', n, '', '', '')));   // wrapped text stays in its column
+        rule();                                                        // thin rule under every item
       });
     } else {
-      // Numbers too wide for five columns on 48 characters: stacked rows, nothing cut off
-      const inner = W - 4;
-      const box = s => '| ' + escposPad(s, inner) + ' |';
-      const sep = ch => '+' + ch.repeat(W - 2) + '+';
-      line(sep('-'));
-      bold(true); line(box('# DESCRIPTION')); line('| ' + escposPad('QTY x RATE = TOTAL', inner, true) + ' |'); bold(false);
-      line(sep('='));
+      // Amounts too wide for five columns on 48 characters: two lines per item, nothing cut off
+      bold(true); line('# DESCRIPTION'); line(escposPad('QTY x RATE = TOTAL', W, true)); bold(false);
+      rule('=');
       rows.forEach(x => {
-        escposWrap(x.n + '. ' + x.name, inner).forEach(l => line(box(l)));
-        escposWrap(`${x.q} x ${x.r} = ${x.t}`, inner).forEach(l => line('| ' + escposPad(l, inner, true) + ' |'));
-        line(sep('-'));
+        escposWrap(x.n + '. ' + x.name, W).forEach(l => line(l));
+        escposWrap(`${x.q} x ${x.r} = ${x.t}`, W).forEach(l => line(escposPad(l, W, true)));
+        rule();
       });
     }
   };
   table('SALE ITEMS', sales, false);
   if (scraps.length) table('SCRAP / DEDUCTION', scraps, true);
 
-  // ---- Boxed summary ----
-  const inner = W - 4;                                        // "| " ... " |"
-  const sumLine = (label, value) => {
-    label = escposAscii(label); value = escposAscii(value);
-    if (label.length + 1 + value.length <= inner) line('| ' + label + value.padStart(inner - label.length) + ' |');
-    else { line('| ' + escposPad(label, inner) + ' |'); line('| ' + escposPad(value, inner, true) + ' |'); }
-  };
-  const bar = ch => line('+' + ch.repeat(W - 2) + '+');
-  line(); bar('-');
-  sumLine('Sale Amount', fmt(rec.saleAmt));
-  sumLine('Scrap Deduction', fmt(-rec.scrapAmt));
-  sumLine('Discount', fmt(-(rec.discount || 0)));
-  sumLine('Charges', (rec.charges ? '+ ' : '') + fmt(rec.charges || 0));
-  bar('=');
+  // ---- Totals ----
+  const sum = (l, r) => escposLR(l, r).forEach(x => line(x));
+  line();
+  sum('Sale Amount', fmt(rec.saleAmt));
+  sum('Scrap Deduction', fmt(-rec.scrapAmt));
+  sum('Discount', fmt(-(rec.discount || 0)));
+  sum('Charges', (rec.charges ? '+ ' : '') + fmt(rec.charges || 0));
+  rule('=');
   bold(true); size(1, 2);
-  sumLine('GRAND TOTAL', fmt(rec.net));
+  sum('GRAND TOTAL', fmt(rec.net));
   size(1, 1); bold(false);
-  bar('=');
-  sumLine(cashLabel, fmt(cashShown));
-  if (rec.change) sumLine('Change Returned', fmt(rec.change));
+  rule('=');
+  sum(cashLabel, fmt(cashShown));
+  if (rec.change) sum('Change Returned', fmt(rec.change));
   bold(true); size(1, 2);
-  sumLine('BALANCE DUE', fmt(rec.due));
+  sum('BALANCE DUE', fmt(rec.due));
   size(1, 1); bold(false);
   if (rec.prevBalance != null) {
-    bar('-');
-    sumLine('Previous Balance', fmt(rec.prevBalance));
-    bold(true); sumLine('Total Khata Balance', fmt(rec.newBalance)); bold(false);
+    rule();
+    sum('Previous Balance', fmt(rec.prevBalance));
+    bold(true); sum('Total Khata Balance', fmt(rec.newBalance)); bold(false);
   }
-  bar('-');
+  rule();
 
   // ---- Footer (unchanged wording) ----
-  line();
-  escposLR('Total Items / Qty', `${rec.items.length} items / ${qtyTotal} pcs`).forEach(l => line(l));
-  line('-'.repeat(W));
+  sum('Total Items / Qty', `${rec.items.length} items / ${qtyTotal} pcs`);
+  rule();
   align(1);
   escposWrap('Goods once sold can be exchanged within 7 days with this invoice in original condition. ' +
     'No cash refunds. Scrap / returned items are deducted at the agreed rate. Thank you for your business!', W).forEach(l => line(l));
