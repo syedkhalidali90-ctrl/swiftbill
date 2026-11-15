@@ -1,0 +1,21 @@
+{
+  "id": "./",
+  "name": "SwiftBill POS",
+  "short_name": "SwiftBill",
+  "description": "Offline POS & calculator billing with Khata ledger, scrap deductions, WhatsApp e-invoices, deposit receipts and customer statements.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#166534",
+  "theme_color": "#166534",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["business", "finance", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
