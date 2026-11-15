@@ -242,6 +242,8 @@
     display: inline-flex; align-items: center; gap: 6px;
   }
   .hold-btn svg { width: 16px; height: 16px; }
+  .names-btn { padding: 0 12px; }
+  @media (max-width: 359px) { .names-btn { font-size: 0; gap: 0; } }
 
   .display {
     background: var(--ink); color: #fff; border-radius: 12px; padding: 6px 8px 6px 12px;
@@ -532,6 +534,7 @@
   .suggest button:last-child { border-bottom: 0; }
   .suggest button:active, .suggest button:hover { background: var(--ind-soft); }
   .suggest b { color: var(--g2); white-space: nowrap; }
+  .suggest .sg-manage { justify-content: center; color: var(--ind); font-weight: 700; }
   .sg-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
   /* Saved item-name library */
   .nl-row .del { width: 40px; height: 40px; }
@@ -618,6 +621,7 @@
   .sheet-f.wrap { flex-wrap: wrap; }
   .btn.f3 { flex: 1 1 28%; }
   .btn.f2 { flex: 1 1 40%; }
+  .dp-hint { flex: 1 1 100%; font-size: 12px; color: var(--muted); text-align: center; line-height: 1.4; }
   .btn:disabled { opacity: .6; }
   .cv-btns { display: flex; gap: 8px; margin-top: 8px; }
 
@@ -877,6 +881,10 @@
     <div class="note-row">
       <input id="noteInput" type="text" placeholder="Item name / note (optional)" autocomplete="off" enterkeyhint="done" />
       <div class="suggest hidden" id="suggestBox" role="listbox" aria-label="Saved products"></div>
+      <button class="hold-btn names-btn" id="namesBtn" title="Saved item names: search, add, edit, delete" aria-label="Saved item names">
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="5" width="16" height="2.4" rx="1.2"/><rect x="4" y="10.8" width="16" height="2.4" rx="1.2"/><rect x="4" y="16.6" width="10" height="2.4" rx="1.2"/></svg>
+        NAMES
+      </button>
       <button class="hold-btn" id="holdBtn" title="Hold this bill">
         <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
         HOLD
@@ -2445,7 +2453,7 @@ function showBillDetail(rec, onBack) {
              <button class="btn f3" id="bCopy">Re-bill</button>
              <button class="btn f3" id="bShare">Share</button>
              <button class="btn f2" id="bPrint">🖨 Print</button>
-             <button class="btn f2 primary" id="bPdf">⬇ Download Full PDF</button>${wifiPrintButtonHTML('bWifi')}${btPrintButtonHTML('bBt')}`,
+             <button class="btn f2 primary" id="bPdf">⬇ Download Full PDF</button>${wifiPrintButtonHTML('bWifi')}${btPrintButtonHTML('bBt')}${directPrintHintHTML()}`,
     footerClass: 'wrap',
     onMount: () => {
       wireEInvoiceBar(rec);
@@ -2477,7 +2485,7 @@ function showReceipt(rec) {
              <button class="btn f3" id="rShare">Share</button>
              <button class="btn f3 primary" id="rDone">New Bill</button>
              <button class="btn f2" id="rPrint">🖨 Print</button>
-             <button class="btn f2 indigo" id="rPdf">⬇ Download Full PDF</button>${wifiPrintButtonHTML('rWifi')}${btPrintButtonHTML('rBt')}`,
+             <button class="btn f2 indigo" id="rPdf">⬇ Download Full PDF</button>${wifiPrintButtonHTML('rWifi')}${btPrintButtonHTML('rBt')}${directPrintHintHTML()}`,
     footerClass: 'wrap',
     onMount: () => {
       wireEInvoiceBar(rec);
@@ -2638,7 +2646,7 @@ function openMenu() {
           <label style="flex:0 0 92px">PORT<input id="sPrPort" inputmode="numeric" value="${esc(S.printerPort)}" placeholder="9100" maxlength="5" autocomplete="off" /></label>
         </div>
         <button type="button" class="btn" style="width:100%" id="sPrTest">📶 Test printer</button>
-        <div class="hint">Adds a “Wi-Fi Print” button to invoices: one continuous slip with a single cut, no print
+        <div class="hint">Adds a “Wi-Fi Print” button to invoices, statements and payment receipts: one continuous slip with a single cut, no print
           dialog. Needs the SwiftBill Android app (version 1.1.0 or newer). The printer IP is on its self-test page;
           leave empty to turn this off. Bills are sent only to this printer, never to the internet.</div></div>
       <div class="field"><label>DIRECT BLUETOOTH PRINTER (paired ESC/POS printer, no Wi-Fi or internet needed)</label>
@@ -2887,12 +2895,17 @@ const openLibraryFromField = e => {
   e.preventDefault();
   openNameLibrary();
 };
+$('namesBtn').onclick = () => { $('suggestBox').classList.add('hidden'); openNameLibrary(cleanName($('noteInput').value)); };
 $('noteInput').addEventListener('touchstart', openLibraryFromField, { passive: false });
 $('noteInput').addEventListener('mousedown', openLibraryFromField);
 $('noteInput').addEventListener('focus', renderSuggest);
 $('noteInput').addEventListener('blur', () => setTimeout(() => $('suggestBox').classList.add('hidden'), 150));
 $('suggestBox').addEventListener('pointerdown', e => e.preventDefault());   // keep focus while tapping
 $('suggestBox').addEventListener('click', e => {
+  if (e.target.closest('[data-manage]')) {
+    $('suggestBox').classList.add('hidden');
+    return openNameLibrary(cleanName($('noteInput').value));
+  }
   const b = e.target.closest('[data-key]');
   const p = b && S.products.find(x => x.key === b.dataset.key);
   if (p) pickProduct(p);
@@ -2973,7 +2986,8 @@ function renderSuggest() {
     <button type="button" data-key="${esc(p.key)}">
       <span class="sg-name">${esc(p.name)} ${p.type === 'SCRAP' ? '<span class="tag scrap">SCRAP</span>' : ''}</span>
       <b>${p.rate ? fmt(p.rate) : ''}</b>
-    </button>`).join('');
+    </button>`).join('') + `
+    <button type="button" class="sg-manage" data-manage="1">✎ Add / edit / delete saved names</button>`;
   box.classList.remove('hidden');
 }
 
@@ -3913,7 +3927,7 @@ function showDepositSlip(customerId, entryId, onBack) {
         ${c.phone ? '' : '<div class="muted" style="font-size:12px">No phone saved for this customer — WhatsApp will ask you to choose the chat.</div>'}
       </div>` + html,
     footer: `<button class="btn f2" id="dsPrint">🖨 Print</button>
-             <button class="btn f2 indigo" id="dsPdf">⬇ Download Full PDF</button>${wifiPrintButtonHTML('dsWifi')}${btPrintButtonHTML('dsBt')}`,
+             <button class="btn f2 indigo" id="dsPdf">⬇ Download Full PDF</button>${wifiPrintButtonHTML('dsWifi')}${btPrintButtonHTML('dsBt')}${directPrintHintHTML()}`,
     footerClass: 'wrap',
     onMount: () => {
       $('dsWa').onclick = () => openWhatsApp(normalizePhone(c.phone), depositText(c, e));
@@ -4081,7 +4095,7 @@ function openStatement(customerId, onBack, range) {
       </div>
       ${html}`,
     footer: `<button class="btn f2" id="stPrint">🖨 Print</button>
-             <button class="btn f2 indigo" id="stPdf">⬇ Download Full PDF</button>${wifiPrintButtonHTML('stWifi')}${btPrintButtonHTML('stBt')}`,
+             <button class="btn f2 indigo" id="stPdf">⬇ Download Full PDF</button>${wifiPrintButtonHTML('stWifi')}${btPrintButtonHTML('stBt')}${directPrintHintHTML()}`,
     footerClass: 'wrap',
     onMount: () => {
       const go = (from, to) => {
@@ -4478,6 +4492,16 @@ function btJobOpts(cfg = S) {
 
 function btPrintButtonHTML(id) {
   return S.btEnabled && IS_ANDROID ? `<button class="btn f2" id="${id}">🔷 Bluetooth Print</button>` : '';
+}
+
+/** Says where the hidden Wi-Fi / Bluetooth Print buttons come from (never shown as working where they can't). */
+function directPrintHintHTML() {
+  if (!IS_ANDROID) return '<div class="dp-hint">📶 Wi-Fi Print and 🔷 Bluetooth Print buttons appear here only in the ' +
+    'SwiftBill Android app, after the printer is set up in ⚙ Settings.</div>';
+  const missing = [];
+  if (!(S.printerHost && S.printerPort)) missing.push('📶 Wi-Fi Print: enter the printer IP and port');
+  if (!S.btEnabled) missing.push('🔷 Bluetooth Print: turn it on');
+  return missing.length ? `<div class="dp-hint">${missing.join(' · ')} in ⚙ Settings to show the button here.</div>` : '';
 }
 
 function openBluetoothApp(query) {
