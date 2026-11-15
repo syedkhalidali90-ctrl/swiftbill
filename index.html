@@ -480,6 +480,36 @@
   .inv-sign { display: flex; justify-content: space-between; gap: 30px; margin-top: 34px; }
   .inv-sign div { flex: 1; border-top: 1px solid var(--ink); text-align: center; font-size: 11px; font-weight: 700; padding-top: 4px; }
 
+  /* ---------- Boxed black & white invoice (invoices only; deposit slips / statements unchanged) ---------- */
+  .inv.boxed { color: #000; font-family: "SB Receipt", Roboto, "Helvetica Neue", Arial, sans-serif; font-variant-numeric: tabular-nums; }
+  .inv.boxed .inv-head { border-bottom: 0; padding-bottom: 8px; }
+  .inv.boxed .inv-shop { color: #000; font-size: 22px; letter-spacing: .03em; }
+  .inv.boxed .inv-title { color: #000; font-weight: 700; letter-spacing: .3em; }
+  .inv.boxed .bx-meta, .inv.boxed .bx-t, .inv.boxed .bx-sum { width: 100%; border-collapse: collapse; border: 2px solid #000; }
+  .inv.boxed .bx-meta td { width: 50%; border: 1px solid #000; padding: 5px 7px; vertical-align: top; }
+  .inv.boxed .bx-meta td:nth-child(2) { text-align: right; }
+  .inv.boxed .bx-meta span { display: block; font-size: 9.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+  .inv.boxed .bx-meta b { display: block; font-size: 14px; font-weight: 800; overflow-wrap: anywhere; }
+  .inv.boxed .inv-sec, .inv.boxed .inv-sec.scrap { color: #000; background: none; border-radius: 0; padding: 0 0 4px; margin-top: 12px; font-size: 11.5px; letter-spacing: .14em; }
+  .inv.boxed .inv-t { margin-top: 0; }
+  .inv.boxed .inv-t th, .inv.boxed .inv-t td { border: 1px solid #000; padding: 6px 5px; vertical-align: top; color: #000; }
+  .inv.boxed .inv-t th { font-size: 10px; font-weight: 800; letter-spacing: .05em; border-bottom-width: 2px; }
+  .inv.boxed .inv-t .c { text-align: center; white-space: nowrap; }
+  .inv.boxed .inv-t .n { text-align: right; white-space: nowrap; }
+  .inv.boxed .inv-t td.n:last-child { font-weight: 800; }
+  .inv.boxed .inv-t td:first-child, .inv.boxed .inv-t th:first-child { width: 24px; }
+  .inv.boxed .inv-t td.d { overflow-wrap: anywhere; }
+  .inv.boxed .bx-sum { margin-top: 12px; }
+  .inv.boxed .bx-sum td { padding: 4px 9px; }
+  .inv.boxed .bx-sum td:last-child { text-align: right; white-space: nowrap; }
+  .inv.boxed .bx-sum tr:first-child td { padding-top: 7px; }
+  .inv.boxed .bx-sum .grand td { font-size: 18px; font-weight: 900; padding: 8px 9px; border-top: 4px double #000; border-bottom: 4px double #000; }
+  .inv.boxed .bx-sum .due td { font-size: 15px; font-weight: 900; padding-bottom: 7px; }
+  .inv.boxed .bx-sum .sm td { font-size: 12px; }
+  .inv.boxed .bx-sum .sm-first td { border-top: 1px solid #000; padding-top: 6px; }
+  .inv.boxed .inv-count { border-bottom-color: #000; }
+  .inv.boxed .inv-policy { color: #000; }
+
   /* ---------- Scrap item cards & list section headings ---------- */
   .sec-head { display: flex; justify-content: space-between; font-size: 11px; font-weight: 900; letter-spacing: .1em; color: var(--g1); padding: 4px 4px 0; }
   .sec-head.scrap { color: #b45309; }
@@ -613,6 +643,41 @@
     position: fixed; left: 0; top: 0; z-index: -1; pointer-events: none;
     width: 440px; padding: 20px; background: #fff; box-sizing: border-box;
   }
+  /* Invoice PDF: A4 width (794 px = 210 mm), at least one A4 page tall, larger type */
+  .pdf-host.pdf-a4 { width: 794px; min-height: 1123px; padding: 56px 64px; }
+  .pdf-a4 .inv.boxed { font-size: 15px; }
+  .pdf-a4 .inv.boxed .inv-shop { font-size: 34px; }
+  .pdf-a4 .inv.boxed .inv-title { font-size: 14px; margin-top: 6px; }
+  .pdf-a4 .inv.boxed .inv-head { padding-bottom: 16px; }
+  .pdf-a4 .inv.boxed .bx-meta td { padding: 9px 12px; }
+  .pdf-a4 .inv.boxed .bx-meta span { font-size: 12px; }
+  .pdf-a4 .inv.boxed .bx-meta b { font-size: 18px; margin-top: 2px; }
+  .pdf-a4 .inv.boxed .inv-sec { font-size: 14px; margin-top: 22px; padding-bottom: 6px; }
+  .pdf-a4 .inv.boxed .inv-t th { font-size: 13px; padding: 9px 10px; }
+  .pdf-a4 .inv.boxed .inv-t td { font-size: 16px; padding: 9px 10px; }
+  .pdf-a4 .inv.boxed .inv-t td:first-child, .pdf-a4 .inv.boxed .inv-t th:first-child { width: 44px; }
+  .pdf-a4 .inv.boxed .inv-t th:nth-child(3) { width: 84px; }   /* same column widths in SALE and SCRAP tables */
+  .pdf-a4 .inv.boxed .inv-t th:nth-child(4) { width: 132px; }
+  .pdf-a4 .inv.boxed .inv-t th:nth-child(5) { width: 150px; }
+  .pdf-a4 .inv.boxed .bx-sum { width: 62%; margin: 22px 0 0 auto; font-size: 16px; }
+  .pdf-a4 .inv.boxed .bx-sum td { padding: 6px 14px; }
+  .pdf-a4 .inv.boxed .bx-sum .grand td { font-size: 24px; padding: 12px 14px; }
+  .pdf-a4 .inv.boxed .bx-sum .due td { font-size: 19px; }
+  .pdf-a4 .inv.boxed .bx-sum .sm td { font-size: 14px; }
+  .pdf-a4 .inv.boxed .inv-foot { margin-top: 26px; }
+  .pdf-a4 .inv.boxed .inv-count { font-size: 15px; padding: 10px 0; }
+  .pdf-a4 .inv.boxed .inv-policy { font-size: 13px; margin-top: 14px; }
+  .pdf-a4 .inv.boxed .inv-sign { margin-top: 70px; gap: 120px; }
+  .pdf-a4 .inv.boxed .inv-sign div { font-size: 14px; padding-top: 6px; }
+  /* Paginated A4 invoice: each page is exactly 794 x 1123 px (210 x 297 mm) */
+  .pdf-host.pdf-page { height: 1123px; min-height: 0; overflow: hidden; }
+  .pdf-page .inv.boxed .inv-t, .pdf-measure .inv.boxed .inv-t { table-layout: fixed; }
+  .pdf-blk { display: flow-root; }             /* keeps each block's margins inside its measured height */
+  .pdf-cont { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #000; padding-bottom: 8px; }
+  .pdf-cont b { font-size: 18px; letter-spacing: .03em; }
+  .pdf-cont span { font-size: 13px; font-weight: 700; }
+  .pdf-pageno { position: absolute; left: 64px; right: 64px; bottom: 26px; display: flex; justify-content: space-between;
+    border-top: 1px solid #000; padding-top: 6px; font: 600 12px "SB Receipt", Roboto, Arial, sans-serif; color: #000; }
 
   /* ============================================================
      PRINT — 80 mm (3 in) THERMAL ROLL, one continuous long slip
@@ -672,6 +737,31 @@
   #printArea .inv-policy { font-size: calc(12.5 * var(--u)); font-weight: 500; line-height: 1.38; margin: calc(8 * var(--u)) 0 0; }
   #printArea .inv-sign { gap: calc(24 * var(--u)); margin-top: calc(34 * var(--u)); }
   #printArea .inv-sign div { font-size: calc(13 * var(--u)); font-weight: 800; border-top: calc(2 * var(--u)) solid; padding-top: calc(4 * var(--u)); }
+  /* Boxed invoice on the 80 mm slip */
+  #printArea .inv.boxed .inv-head { padding: 0 0 calc(6 * var(--u)); border-bottom: 0; }
+  #printArea .inv.boxed .bx-meta, #printArea .inv.boxed .bx-t, #printArea .inv.boxed .bx-sum { width: 100%; border-collapse: collapse; border: calc(2 * var(--u)) solid; }
+  #printArea .inv.boxed .bx-meta td { width: 50%; border: calc(1.2 * var(--u)) solid; padding: calc(4 * var(--u)) calc(5 * var(--u)); vertical-align: top; }
+  #printArea .inv.boxed .bx-meta td:nth-child(2) { text-align: right; }
+  #printArea .inv.boxed .bx-meta span { display: block; font-size: calc(10 * var(--u)); font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+  #printArea .inv.boxed .bx-meta b { display: block; font-size: calc(15.5 * var(--u)); font-weight: 800; overflow-wrap: anywhere; }
+  #printArea .inv.boxed .inv-sec { padding: 0 0 calc(3 * var(--u)); }
+  #printArea .inv.boxed .inv-t th, #printArea .inv.boxed .inv-t td { border: calc(1.2 * var(--u)) solid; padding: calc(4 * var(--u)) calc(3 * var(--u)); vertical-align: top; }
+  #printArea .inv.boxed .inv-t th { font-size: calc(10.5 * var(--u)); letter-spacing: .02em; border-bottom-width: calc(2 * var(--u)); }
+  #printArea .inv.boxed .inv-t td { font-size: calc(15.5 * var(--u)); }
+  #printArea .inv.boxed .inv-t .c { text-align: center; white-space: nowrap; }
+  #printArea .inv.boxed .inv-t .n { text-align: right; white-space: nowrap; padding-left: calc(2 * var(--u)); padding-right: calc(2 * var(--u)); }
+  #printArea .inv.boxed .inv-t td.n, #printArea .inv.boxed .inv-t td.c:not(:first-child) { font-size: calc(14 * var(--u)); letter-spacing: -.01em; }
+  #printArea .inv.boxed .inv-t td.c:not(:first-child) { padding-left: calc(2 * var(--u)); padding-right: calc(2 * var(--u)); }
+  #printArea .inv.boxed .inv-t td:first-child, #printArea .inv.boxed .inv-t th:first-child { width: calc(20 * var(--u)); padding-right: calc(2 * var(--u)); }
+  #printArea .inv.boxed .inv-t tbody tr:last-child td { border-bottom: calc(1.2 * var(--u)) solid; }
+  #printArea .inv.boxed .bx-sum { margin-top: calc(10 * var(--u)); font-size: calc(16 * var(--u)); font-weight: 600; }
+  #printArea .inv.boxed .bx-sum td { padding: calc(3 * var(--u)) calc(7 * var(--u)); }
+  #printArea .inv.boxed .bx-sum td:last-child { text-align: right; white-space: nowrap; }
+  #printArea .inv.boxed .bx-sum tr:first-child td { padding-top: calc(6 * var(--u)); }
+  #printArea .inv.boxed .bx-sum .grand td { font-size: calc(21 * var(--u)); font-weight: 900; padding: calc(7 * var(--u)) calc(7 * var(--u)); border-top: calc(4 * var(--u)) double; border-bottom: calc(4 * var(--u)) double; }
+  #printArea .inv.boxed .bx-sum .due td { font-size: calc(18 * var(--u)); font-weight: 900; padding-bottom: calc(6 * var(--u)); }
+  #printArea .inv.boxed .bx-sum .sm td { font-size: calc(14 * var(--u)); }
+  #printArea .inv.boxed .bx-sum .sm-first td { border-top: calc(1.2 * var(--u)) solid; }
   /* Very large amounts: sizeAndPrint() steps the table text down only if it would overflow */
   #printArea .slip.tight .inv-t td { font-size: calc(14 * var(--u)); }
   #printArea .slip.tight .inv-t th { font-size: calc(10 * var(--u)); }
@@ -704,7 +794,7 @@
     }
     #printArea .slip { --u: calc(100vw / var(--paper-px, 302.36)); }
     #printArea .inv-head, #printArea .inv-meta, #printArea .inv-sum, #printArea .inv-count,
-    #printArea .inv-policy, #printArea .inv-sign, #printArea tr { page-break-inside: avoid; break-inside: avoid; }
+    #printArea .inv-policy, #printArea .inv-sign, #printArea .bx-meta, #printArea .bx-sum, #printArea tr { page-break-inside: avoid; break-inside: avoid; }
     #printArea .inv-sec { page-break-after: avoid; break-after: avoid; }
     #printArea thead { display: table-header-group; }
   }
@@ -2259,69 +2349,82 @@ function openHistory() {
  * CUSTOMER INVOICE — one layout used for the on-screen modal AND printing.
  * Header → SALE ITEMS → SCRAP / DEDUCTION → summary box → footer.
  */
-function invoiceHTML(rec) {
+/** The boxed invoice in pieces, so the A4 PDF can split item rows across pages. */
+function invoiceParts(rec) {
   const d = new Date(rec.date);
   const sales = rec.items.filter(it => it.type !== 'SCRAP');
   const scraps = rec.items.filter(it => it.type === 'SCRAP');
   const money = n => fmt(n);
+  const amt = n => round2(n).toLocaleString('en-US', { maximumFractionDigits: 2 });   // plain number for table cells
   const qtyTotal = round2(rec.items.reduce((s, it) => s + num(it.qty), 0));
+  const head = `<thead><tr><th class="c">#</th><th>Description</th><th class="c">Qty</th><th class="n">Rate</th><th class="n">Total</th></tr></thead>`;
+  const row = (it, i, neg) => `
+        <tr${neg ? ' class="neg"' : ''}><td class="c">${i + 1}</td><td class="d">${esc(it.name)}</td><td class="c">${neg ? '-' : ''}${it.qty}</td><td class="n">${amt(it.rate)}</td><td class="n">${amt(neg ? -it.total : it.total)}</td></tr>`;
 
-  const saleRows = sales.length ? sales.map((it, i) => `
-      <tr><td>${i + 1}</td><td>${esc(it.name)}</td><td class="n">${it.qty}</td><td class="n">${round2(it.rate).toLocaleString('en-US')}</td><td class="n">${money(it.total)}</td></tr>`).join('')
-    : `<tr><td colspan="5" class="inv-none">No sale items</td></tr>`;
+  const saleRows = sales.length ? sales.map((it, i) => row(it, i, false))
+    : [`<tr><td colspan="5" class="inv-none">No sale items</td></tr>`];
+  const scrapRows = scraps.map((it, i) => row(it, i, true));
 
-  const scrapTable = scraps.length ? `
-    <div class="inv-sec scrap">SCRAP / DEDUCTION</div>
-    <table class="inv-t">
-      <thead><tr><th>#</th><th>Description</th><th class="n">Qty</th><th class="n">Rate</th><th class="n">Total</th></tr></thead>
-      <tbody>${scraps.map((it, i) => `
-        <tr class="neg"><td>${i + 1}</td><td>${esc(it.name)}</td><td class="n">-${it.qty}</td><td class="n">${round2(it.rate).toLocaleString('en-US')}</td><td class="n">${money(-it.total)}</td></tr>`).join('')}
-      </tbody>
-    </table>` : '';
-
-  const cashLabel = rec.cash < 0 ? 'Cash Paid Out' : 'Cash Received';
+  const cashLabel = rec.cash < 0 ? 'Cash Paid Out' : 'Paid';
   const cashShown = rec.cash < 0 ? -(rec.tendered != null ? rec.tendered : -rec.cash) : (rec.tendered != null ? rec.tendered : rec.cash);
+  const line = (label, value, cls) => `<tr${cls ? ` class="${cls}"` : ''}><td>${label}</td><td>${value}</td></tr>`;
 
-  return `
-  <div class="inv">
+  return {
+    head, saleRows, scrapRows,
+    header: `
     <div class="inv-head">
       <div class="inv-shop">${esc(S.shopName || 'SWIFTBILL POS')}</div>
       <div class="inv-title">CUSTOMER INVOICE</div>
     </div>
-    <div class="inv-meta">
-      <div><span>Bill No</span><b>#${rec.no}${rec.edited ? ' (edited)' : ''}</b></div>
-      <div><span>Date</span><b>${d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}</b></div>
-      <div><span>Customer</span><b>${esc(rec.customerName)}</b></div>
-      <div><span>Time</span><b>${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</b></div>
-    </div>
-
-    <div class="inv-sec">SALE ITEMS</div>
-    <table class="inv-t">
-      <thead><tr><th>#</th><th>Description</th><th class="n">Qty</th><th class="n">Rate</th><th class="n">Total</th></tr></thead>
-      <tbody>${saleRows}</tbody>
-    </table>
-    ${scrapTable}
-
-    <div class="inv-sum">
-      <div><span>Sale Amount</span><span>${money(rec.saleAmt)}</span></div>
-      <div class="neg"><span>Scrap Deduction</span><span>${money(-rec.scrapAmt)}</span></div>
-      ${rec.charges ? `<div><span>Charges</span><span>+ ${money(rec.charges)}</span></div>` : ''}
-      ${rec.discount ? `<div><span>Discount</span><span>${money(-rec.discount)}</span></div>` : ''}
-      <div class="net"><span>NET PAYABLE</span><span>${money(rec.net)}</span></div>
-      <div><span>${cashLabel}</span><span>${money(cashShown)}</span></div>
-      ${rec.change ? `<div><span>Change Returned</span><span>${money(rec.change)}</span></div>` : ''}
-      <div class="due"><span>BALANCE DUE</span><span>${money(rec.due)}</span></div>
-      ${rec.prevBalance != null ? `
-        <div class="sm"><span>Previous Balance</span><span>${money(rec.prevBalance)}</span></div>
-        <div class="sm"><b>Total Khata Balance</b><b>${money(rec.newBalance)}</b></div>` : ''}
-    </div>
-
-    <div class="inv-foot">
+    <table class="bx-meta">
+      <tr><td><span>Bill No</span><b>#${rec.no}${rec.edited ? ' (edited)' : ''}</b></td>
+          <td><span>Date</span><b>${d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}</b></td></tr>
+      <tr><td><span>Customer</span><b>${esc(rec.customerName)}</b></td>
+          <td><span>Time</span><b>${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</b></td></tr>
+    </table>`,
+    summary: `<table class="bx-sum">
+      ${line('Sale Amount', money(rec.saleAmt))}
+      ${line('Scrap Deduction', money(-rec.scrapAmt))}
+      ${line('Discount', money(-(rec.discount || 0)))}
+      ${line('Charges', (rec.charges ? '+ ' : '') + money(rec.charges || 0))}
+      ${line('GRAND TOTAL', money(rec.net), 'grand')}
+      ${line(cashLabel, money(cashShown))}
+      ${rec.change ? line('Change Returned', money(rec.change)) : ''}
+      ${line('BALANCE DUE', money(rec.due), 'due')}
+      ${rec.prevBalance != null ? line('Previous Balance', money(rec.prevBalance), 'sm sm-first') + line('<b>Total Khata Balance</b>', `<b>${money(rec.newBalance)}</b>`, 'sm') : ''}
+    </table>`,
+    foot: `<div class="inv-foot">
       <div class="inv-count"><span>Total Items / Qty</span><b>${rec.items.length} items / ${qtyTotal} pcs</b></div>
       <p class="inv-policy">Goods once sold can be exchanged within 7 days with this invoice in original condition.
         No cash refunds. Scrap / returned items are deducted at the agreed rate. Thank you for your business!</p>
       <div class="inv-sign"><div>Record Copy</div><div>Auth. Sign</div></div>
-    </div>
+    </div>`
+  };
+}
+
+function invoiceHTML(rec) {
+  const p = invoiceParts(rec);
+  const scrapTable = p.scrapRows.length ? `
+    <div class="inv-sec scrap">SCRAP / DEDUCTION</div>
+    <table class="inv-t bx-t">
+      ${p.head}
+      <tbody>${p.scrapRows.join('')}
+      </tbody>
+    </table>` : '';
+
+  return `
+  <div class="inv boxed">${p.header}
+
+    <div class="inv-sec">SALE ITEMS</div>
+    <table class="inv-t bx-t">
+      ${p.head}
+      <tbody>${p.saleRows.join('')}</tbody>
+    </table>
+    ${scrapTable}
+
+    ${p.summary}
+
+    ${p.foot}
   </div>`;
 }
 
@@ -3260,15 +3363,115 @@ function ensurePdfLibs() {
   return pdfLibsReady;
 }
 
+/* ---------- Invoice PDF: A4 portrait pages ----------
+   Every block is measured at the real page width, whole item rows are packed
+   onto 297 mm pages, the table header repeats on each new page, and the
+   summary + footer always stay together on the last page. */
+const A4_W = 794, A4_H = 1123;                 // px at 96 dpi = 210 x 297 mm
+const A4_PAD_TOP = 56, A4_PAD_BOTTOM = 70;     // bottom padding leaves room for "Page x of y"
+const A4_SAFETY = 6;                           // px kept free on every page against rounding
+
+function pdfBlock(html) { return '<div class="pdf-blk">' + html + '</div>'; }
+function pdfTable(title, head, rows) {
+  return pdfBlock(`<div class="inv-sec${/SCRAP/.test(title) ? ' scrap' : ''}">${title}</div>
+    <table class="inv-t bx-t">${head}<tbody>${rows.join('')}</tbody></table>`);
+}
+
+/** Splits the invoice into A4 pages; returns an array of page HTML strings. */
+async function invoicePDFPages(rec) {
+  const p = invoiceParts(rec);
+  const shop = esc(S.shopName || 'SWIFTBILL POS');
+  const contHTML = pdfBlock(`<div class="pdf-cont"><b>${shop}</b><span>Invoice #${rec.no} (continued)</span></div>`);
+  const sections = [{ title: 'SALE ITEMS', rows: p.saleRows }];
+  if (p.scrapRows.length) sections.push({ title: 'SCRAP / DEDUCTION', rows: p.scrapRows });
+  const finalHTML = pdfBlock(p.summary + p.foot);
+
+  // ---- measure everything once, at the exact page width ----
+  const m = document.createElement('div');
+  m.className = 'pdf-host pdf-a4 pdf-measure';
+  m.innerHTML = '<div class="inv boxed">' + pdfBlock(p.header) + contHTML + finalHTML +
+    sections.map(sec => pdfTable(sec.title + ' (continued)', p.head, sec.rows)).join('') + '</div>';
+  document.body.appendChild(m);
+  let H;
+  try {
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+    const blocks = m.querySelectorAll('.inv > .pdf-blk');
+    const h = el => el.getBoundingClientRect().height;
+    H = { header: h(blocks[0]), cont: h(blocks[1]), final: h(blocks[2]), sections: [] };
+    sections.forEach((sec, i) => {
+      const blk = blocks[3 + i], table = blk.querySelector('table');
+      const rows = [...table.tBodies[0].rows].map(h);
+      // title + table header + table borders = block height minus the rows
+      H.sections.push({ start: h(blk) - rows.reduce((t, x) => t + x, 0), rows });
+    });
+  } finally {
+    m.remove();
+  }
+
+  // ---- pack whole rows onto pages ----
+  const CAP = A4_H - A4_PAD_TOP - A4_PAD_BOTTOM - A4_SAFETY;
+  const pages = [];
+  let cur = null;
+  const newPage = first => { cur = { html: first ? pdfBlock(p.header) : contHTML, used: first ? H.header : H.cont, hasBody: false }; pages.push(cur); };
+  newPage(true);
+  sections.forEach((sec, si) => {
+    const hs = H.sections[si];
+    let i = 0, continued = false;
+    while (i < sec.rows.length) {
+      // a table starts only if its header and at least one row fit
+      if (cur.used + hs.start + hs.rows[i] > CAP && cur.hasBody) { newPage(false); continued = true; }
+      let used = cur.used + hs.start, j = i;
+      while (j < sec.rows.length && (used + hs.rows[j] <= CAP || j === i)) used += hs.rows[j++];
+      cur.html += pdfTable(sec.title + (continued ? ' (continued)' : ''), p.head, sec.rows.slice(i, j));
+      cur.used = used; cur.hasBody = true;
+      i = j;
+      if (i < sec.rows.length) { newPage(false); continued = true; }
+    }
+  });
+  // Grand Total, payment summary and footer always stay together
+  if (cur.used + H.final > CAP && cur.hasBody) newPage(false);
+  cur.html += finalHTML; cur.used += H.final;
+
+  return pages.map((pg, k) => `<div class="inv boxed">${pg.html}</div>
+    <div class="pdf-pageno"><span>${shop} · Invoice #${rec.no}</span><span>Page ${k + 1} of ${pages.length}</span></div>`);
+}
+
+/** A4 portrait PDF of the invoice (one or more pages). */
 async function buildInvoicePDF(rec) {
-  return buildPDF(invoiceHTML(rec));
+  await ensurePdfLibs();
+  const pages = await invoicePDFPages(rec);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait', compress: true });
+  const pw = doc.internal.pageSize.getWidth(), ph = doc.internal.pageSize.getHeight();
+  const overflow = [];
+  for (let k = 0; k < pages.length; k++) {
+    const host = document.createElement('div');
+    host.className = 'pdf-host pdf-a4 pdf-page';
+    host.innerHTML = pages[k];
+    document.body.appendChild(host);
+    try {
+      if (document.fonts && document.fonts.ready) await document.fonts.ready;
+      const inv = host.querySelector('.inv');
+      const bottom = inv.getBoundingClientRect().bottom - host.getBoundingClientRect().top;
+      if (bottom > A4_H - A4_PAD_BOTTOM + 1) overflow.push(k + 1);   // never expected; reported for checks
+      const canvas = await window.html2canvas(host, {
+        scale: 2, backgroundColor: '#ffffff', logging: false,
+        width: A4_W, height: A4_H, windowWidth: A4_W, windowHeight: A4_H
+      });
+      if (k > 0) doc.addPage('a4', 'portrait');
+      doc.addImage(canvas.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, pw, ph, undefined, 'FAST');
+    } finally {
+      host.remove();
+    }
+  }
+  return { doc, pages: pages.length, overflow };
 }
 
 /** Render any slip HTML onto ONE PDF page of exactly its size. */
-async function buildPDF(html) {
+async function buildPDF(html, hostClass) {
   await ensurePdfLibs();
   const host = document.createElement('div');
-  host.className = 'pdf-host';
+  host.className = 'pdf-host' + (hostClass ? ' ' + hostClass : '');
   host.innerHTML = html;
   document.body.appendChild(host);
   try {
@@ -3300,14 +3503,25 @@ async function buildPDF(html) {
 }
 
 async function downloadInvoicePDF(rec, btn) {
-  return downloadPDF(invoiceHTML(rec), `Invoice-${rec.no}.pdf`, btn);
-}
-
-async function downloadPDF(html, filename, btn) {
   const label = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Creating PDF…'; }
   try {
-    const { doc } = await buildPDF(html);
+    const { doc, pages } = await buildInvoicePDF(rec);
+    doc.save(`Invoice-${rec.no}.pdf`);
+    toast(`PDF downloaded — A4, ${pages} page${pages > 1 ? 's' : ''}`);
+  } catch (e) {
+    console.error(e);
+    toast('Could not create PDF: ' + (e && e.message ? e.message : e));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
+}
+
+async function downloadPDF(html, filename, btn, hostClass) {
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating PDF…'; }
+  try {
+    const { doc } = await buildPDF(html, hostClass);
     doc.save(filename);
     toast('PDF downloaded — one continuous page');
   } catch (e) {
@@ -3743,6 +3957,7 @@ function escposLR(left, right, cols = ESCPOS_COLS) {
 
 function receiptEscPos(rec) {
   const ESC = 0x1b, GS = 0x1d;
+  const W = ESCPOS_COLS;                 // 48 characters
   const bytes = [];
   const raw = (...b) => bytes.push(...b);
   const text = s => { for (const ch of escposAscii(s)) bytes.push(ch.charCodeAt(0)); };
@@ -3750,72 +3965,124 @@ function receiptEscPos(rec) {
   const align = a => raw(ESC, 0x61, a);              // 0 left, 1 centre, 2 right
   const bold = on => raw(ESC, 0x45, on ? 1 : 0);
   const size = (w, h) => raw(GS, 0x21, ((w - 1) << 4) | (h - 1));
-  const rule = (ch = '-') => line(ch.repeat(ESCPOS_COLS));
+  const amt = n => round2(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  const centre = (s, w) => { s = escposAscii(s); const l = Math.floor((w - s.length) / 2); return (' '.repeat(Math.max(0, l)) + s).padEnd(w); };
 
   const d = new Date(rec.date);
   const sales = rec.items.filter(it => it.type !== 'SCRAP');
   const scraps = rec.items.filter(it => it.type === 'SCRAP');
   const qtyTotal = round2(rec.items.reduce((s, it) => s + num(it.qty), 0));
-  const cashLabel = rec.cash < 0 ? 'Cash Paid Out' : 'Cash Received';
+  const cashLabel = rec.cash < 0 ? 'Cash Paid Out' : 'Paid';
   const cashShown = rec.cash < 0 ? -(rec.tendered != null ? rec.tendered : -rec.cash) : (rec.tendered != null ? rec.tendered : rec.cash);
-
-  // Item table: # (3) | description (19) | qty (5) | rate (9) | total (12) = 48
-  const W = [3, 19, 5, 9, 12];
-  const row = (c) => line(escposPad(c[0], W[0]) + escposPad(c[1], W[1]) + escposPad(c[2], W[2], true) + escposPad(c[3], W[3], true) + escposPad(c[4], W[4], true));
-  const itemRows = (list, neg) => list.forEach((it, i) => {
-    const name = escposWrap(it.name, W[1] - 1);
-    row([String(i + 1), name[0], (neg ? '-' : '') + it.qty, round2(it.rate).toLocaleString('en-US'), fmt(neg ? -it.total : it.total)]);
-    name.slice(1).forEach(n => line(' '.repeat(W[0]) + n));
-  });
-  const table = (title, list, neg) => {
-    bold(true); line(title); bold(false);
-    row(['#', 'DESCRIPTION', 'QTY', 'RATE', 'TOTAL']);
-    rule();
-    if (list.length) itemRows(list, neg); else { align(1); line('No sale items'); align(0); }
-    rule();
-  };
 
   raw(ESC, 0x40);                 // initialise
   raw(ESC, 0x74, 0);              // code page PC437 (ASCII)
+
+  // ---- Header ----
   align(1); bold(true); size(2, 2);
-  escposWrap(S.shopName || 'SWIFTBILL POS', ESCPOS_COLS / 2).forEach(l => line(l));
+  escposWrap(S.shopName || 'SWIFTBILL POS', W / 2).forEach(l => line(l));
   size(1, 1); bold(false);
   line('C U S T O M E R   I N V O I C E');
-  align(0); rule('=');
-  escposLR('Bill No: #' + rec.no + (rec.edited ? ' (edited)' : ''), d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })).forEach(l => line(l));
-  const cust = escposWrap('Customer: ' + rec.customerName, ESCPOS_COLS - 10);
-  escposLR(cust[0], d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })).forEach(l => line(l));
-  cust.slice(1).forEach(l => line(l));
-  rule();
+  align(0); line();
 
+  // ---- Boxed bill details: | Bill No | Date |  | Customer | Time | ----
+  const c1 = 21, c2 = 20;                                    // "| " c1 " | " c2 " |" = 48
+  const rule2 = '+' + '-'.repeat(c1 + 2) + '+' + '-'.repeat(c2 + 2) + '+';
+  const cells = (a, b) => '| ' + escposPad(a, c1) + ' | ' + escposPad(b, c2, true) + ' |';
+  const metaBlock = (l1, v1, l2, v2) => {
+    line(cells(l1, l2));
+    const left = escposWrap(v1, c1), right = escposWrap(v2, c2);
+    bold(true);
+    for (let i = 0; i < Math.max(left.length, right.length); i++) line(cells(left[i] || '', right[i] || ''));
+    bold(false);
+  };
+  line(rule2);
+  metaBlock('BILL NO', '#' + rec.no + (rec.edited ? ' (edited)' : ''), 'DATE', d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }));
+  line(rule2);
+  metaBlock('CUSTOMER', rec.customerName, 'TIME', d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
+  line(rule2);
+
+  // ---- Boxed item tables: | # | DESCRIPTION | QTY | RATE | TOTAL | ----
+  const table = (title, list, neg) => {
+    line(); bold(true); line(title); bold(false);
+    if (!list.length) {
+      line('+' + '-'.repeat(W - 2) + '+'); line('|' + centre('No sale items', W - 2) + '|'); line('+' + '-'.repeat(W - 2) + '+');
+      return;
+    }
+    const rows = list.map((it, i) => ({ n: String(i + 1), name: it.name, q: (neg ? '-' : '') + it.qty, r: amt(it.rate), t: amt(neg ? -it.total : it.total) }));
+    const wN = Math.max(1, ...rows.map(x => x.n.length));
+    const wQ = Math.max(3, ...rows.map(x => x.q.length));
+    const wR = Math.max(4, ...rows.map(x => x.r.length));
+    const wT = Math.max(5, ...rows.map(x => x.t.length));
+    // 6 border characters + 1 space either side of each cell (10) = 16
+    const wD = W - 16 - wN - wQ - wR - wT;
+    if (wD >= 10) {
+      const sep = ch => '+' + [wN, wD, wQ, wR, wT].map(w => ch.repeat(w + 2)).join('+') + '+';
+      const fmtRow = (a, b, c, e, f) => '| ' + escposPad(a, wN, true) + ' | ' + escposPad(b, wD) + ' | ' + centre(c, wQ) + ' | ' + escposPad(e, wR, true) + ' | ' + escposPad(f, wT, true) + ' |';
+      line(sep('-'));
+      bold(true); line(fmtRow('#', 'DESCRIPTION', 'QTY', 'RATE', 'TOTAL')); bold(false);
+      line(sep('='));
+      rows.forEach(x => {
+        const name = escposWrap(x.name, wD);
+        line(fmtRow(x.n, name[0], x.q, x.r, x.t));
+        name.slice(1).forEach(n => line(fmtRow('', n, '', '', '')));
+        line(sep('-'));                                       // line after every item
+      });
+    } else {
+      // Numbers too wide for five columns on 48 characters: stacked rows, nothing cut off
+      const inner = W - 4;
+      const box = s => '| ' + escposPad(s, inner) + ' |';
+      const sep = ch => '+' + ch.repeat(W - 2) + '+';
+      line(sep('-'));
+      bold(true); line(box('# DESCRIPTION')); line('| ' + escposPad('QTY x RATE = TOTAL', inner, true) + ' |'); bold(false);
+      line(sep('='));
+      rows.forEach(x => {
+        escposWrap(x.n + '. ' + x.name, inner).forEach(l => line(box(l)));
+        escposWrap(`${x.q} x ${x.r} = ${x.t}`, inner).forEach(l => line('| ' + escposPad(l, inner, true) + ' |'));
+        line(sep('-'));
+      });
+    }
+  };
   table('SALE ITEMS', sales, false);
   if (scraps.length) table('SCRAP / DEDUCTION', scraps, true);
 
-  const sum = (l, r) => escposLR(l, r).forEach(x => line(x));
-  sum('Sale Amount', fmt(rec.saleAmt));
-  sum('Scrap Deduction', fmt(-rec.scrapAmt));
-  if (rec.charges) sum('Charges', '+ ' + fmt(rec.charges));
-  if (rec.discount) sum('Discount', fmt(-rec.discount));
-  rule('=');
+  // ---- Boxed summary ----
+  const inner = W - 4;                                        // "| " ... " |"
+  const sumLine = (label, value) => {
+    label = escposAscii(label); value = escposAscii(value);
+    if (label.length + 1 + value.length <= inner) line('| ' + label + value.padStart(inner - label.length) + ' |');
+    else { line('| ' + escposPad(label, inner) + ' |'); line('| ' + escposPad(value, inner, true) + ' |'); }
+  };
+  const bar = ch => line('+' + ch.repeat(W - 2) + '+');
+  line(); bar('-');
+  sumLine('Sale Amount', fmt(rec.saleAmt));
+  sumLine('Scrap Deduction', fmt(-rec.scrapAmt));
+  sumLine('Discount', fmt(-(rec.discount || 0)));
+  sumLine('Charges', (rec.charges ? '+ ' : '') + fmt(rec.charges || 0));
+  bar('=');
   bold(true); size(1, 2);
-  sum('NET PAYABLE', fmt(rec.net));
+  sumLine('GRAND TOTAL', fmt(rec.net));
   size(1, 1); bold(false);
-  rule('=');
-  sum(cashLabel, fmt(cashShown));
-  if (rec.change) sum('Change Returned', fmt(rec.change));
+  bar('=');
+  sumLine(cashLabel, fmt(cashShown));
+  if (rec.change) sumLine('Change Returned', fmt(rec.change));
   bold(true); size(1, 2);
-  sum('BALANCE DUE', fmt(rec.due));
+  sumLine('BALANCE DUE', fmt(rec.due));
   size(1, 1); bold(false);
   if (rec.prevBalance != null) {
-    sum('Previous Balance', fmt(rec.prevBalance));
-    bold(true); sum('Total Khata Balance', fmt(rec.newBalance)); bold(false);
+    bar('-');
+    sumLine('Previous Balance', fmt(rec.prevBalance));
+    bold(true); sumLine('Total Khata Balance', fmt(rec.newBalance)); bold(false);
   }
-  rule();
-  sum('Total Items / Qty', `${rec.items.length} items / ${qtyTotal} pcs`);
-  rule();
+  bar('-');
+
+  // ---- Footer (unchanged wording) ----
+  line();
+  escposLR('Total Items / Qty', `${rec.items.length} items / ${qtyTotal} pcs`).forEach(l => line(l));
+  line('-'.repeat(W));
   align(1);
   escposWrap('Goods once sold can be exchanged within 7 days with this invoice in original condition. ' +
-    'No cash refunds. Scrap / returned items are deducted at the agreed rate. Thank you for your business!', ESCPOS_COLS).forEach(l => line(l));
+    'No cash refunds. Scrap / returned items are deducted at the agreed rate. Thank you for your business!', W).forEach(l => line(l));
   align(0);
   line(); line(); line();
   line('_'.repeat(20) + ' '.repeat(8) + '_'.repeat(20));
