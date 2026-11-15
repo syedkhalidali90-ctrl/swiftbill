@@ -67,6 +67,10 @@ self.addEventListener('fetch', event => {
             const copy = res.clone();
             caches.open(CACHE_VERSION).then(c => c.put('./index.html', copy));
           }
+          // Server error page for the app itself (hosting outage, bad upload): keep the working offline copy
+          if (isAppPage && res.status >= 400) {
+            return caches.match('./index.html').then(cached => cached || res);
+          }
           return res;
         })
         .catch(() => caches.match('./index.html').then(r => r || caches.match('./')))

@@ -533,6 +533,10 @@
   .suggest button:active, .suggest button:hover { background: var(--ind-soft); }
   .suggest b { color: var(--g2); white-space: nowrap; }
   .sg-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  /* Saved item-name library */
+  .nl-row .del { width: 40px; height: 40px; }
+  .del.nl-ed { color: var(--ind); background: var(--ind-soft); }
+  .nl-more { font-size: 12px; text-align: center; margin: 4px 0 8px; }
 
   /* ---------- E-invoice share bar ---------- */
   .btn.wa { background: #25d366; border-color: #25d366; color: #fff; }
@@ -1379,7 +1383,11 @@ function defaultState() {
     invoiceBaseUrl: '', // public address of this index.html for e-invoice links
     printPaged: null,   // true: printer's own paper length; false: one exact-length slip; null: auto (see printPagedMode)
     printerHost: '',    // Direct Wi-Fi print: printer IP on the shop's local network
-    printerPort: ''     // Direct Wi-Fi print: raw ESC/POS port (often 9100 — confirm with a test print)
+    printerPort: '',    // Direct Wi-Fi print: raw ESC/POS port (often 9100 — confirm with a test print)
+    btEnabled: false,   // Direct Bluetooth print (Android app 1.2.0+); the printer itself is chosen in the app
+    btPaper: '58',      // Bluetooth roll width: '58' or '80' mm
+    btCols: '',         // Bluetooth characters per line; '' = standard for the roll (58 mm: 32, 80 mm: 48)
+    btCut: false        // true only when the Bluetooth printer has an auto-cutter
   };
 }
 
@@ -1747,7 +1755,7 @@ function addFromCalc() {
   if (!e) {
     // Name typed but no rate → use the saved product rate with qty 1
     const p = getProduct($('noteInput').value);
-    if (p) { calc.expr = String(p.rate); return addFromCalc(); }
+    if (p && p.rate) { calc.expr = String(p.rate); return addFromCalc(); }
     return toast('Enter a rate first');
   }
   const [a, q] = e.split('x');
@@ -2437,12 +2445,13 @@ function showBillDetail(rec, onBack) {
              <button class="btn f3" id="bCopy">Re-bill</button>
              <button class="btn f3" id="bShare">Share</button>
              <button class="btn f2" id="bPrint">🖨 Print</button>
-             <button class="btn f2 primary" id="bPdf">⬇ Download Full PDF</button>${wifiPrintButtonHTML('bWifi')}`,
+             <button class="btn f2 primary" id="bPdf">⬇ Download Full PDF</button>${wifiPrintButtonHTML('bWifi')}${btPrintButtonHTML('bBt')}`,
     footerClass: 'wrap',
     onMount: () => {
       wireEInvoiceBar(rec);
       $('bPrint').onclick = () => printReceipt(rec);
       if ($('bWifi')) $('bWifi').onclick = () => directPrintReceipt(rec);
+      if ($('bBt')) $('bBt').onclick = () => sendBluetoothPrint(receiptEscPos(rec, btJobOpts()), 'Invoice #' + rec.no);
       $('bPdf').onclick = e => downloadInvoicePDF(rec, e.currentTarget);
       $('bShare').onclick = () => shareReceipt(rec);
       $('bEdit').onclick = () => reopenBill(rec);
@@ -2468,12 +2477,13 @@ function showReceipt(rec) {
              <button class="btn f3" id="rShare">Share</button>
              <button class="btn f3 primary" id="rDone">New Bill</button>
              <button class="btn f2" id="rPrint">🖨 Print</button>
-             <button class="btn f2 indigo" id="rPdf">⬇ Download Full PDF</button>${wifiPrintButtonHTML('rWifi')}`,
+             <button class="btn f2 indigo" id="rPdf">⬇ Download Full PDF</button>${wifiPrintButtonHTML('rWifi')}${btPrintButtonHTML('rBt')}`,
     footerClass: 'wrap',
     onMount: () => {
       wireEInvoiceBar(rec);
       $('rPrint').onclick = () => printReceipt(rec);
       if ($('rWifi')) $('rWifi').onclick = () => directPrintReceipt(rec);
+      if ($('rBt')) $('rBt').onclick = () => sendBluetoothPrint(receiptEscPos(rec, btJobOpts()), 'Invoice #' + rec.no);
       $('rPdf').onclick = e => downloadInvoicePDF(rec, e.currentTarget);
       $('rShare').onclick = () => shareReceipt(rec);
       $('rEdit').onclick = () => reopenBill(rec);
@@ -2631,6 +2641,31 @@ function openMenu() {
         <div class="hint">Adds a “Wi-Fi Print” button to invoices: one continuous slip with a single cut, no print
           dialog. Needs the SwiftBill Android app (version 1.1.0 or newer). The printer IP is on its self-test page;
           leave empty to turn this off. Bills are sent only to this printer, never to the internet.</div></div>
+      <div class="field"><label>DIRECT BLUETOOTH PRINTER (paired ESC/POS printer, no Wi-Fi or internet needed)</label>
+        <div class="seg" id="sBt">
+          <button type="button" data-v="0" class="${S.btEnabled ? '' : 'on'}">Bluetooth Print off</button>
+          <button type="button" data-v="1" class="${S.btEnabled ? 'on' : ''}">Bluetooth Print on</button>
+        </div>
+        <div class="seg" id="sBtPaper">
+          <button type="button" data-v="0" class="${S.btPaper === '80' ? '' : 'on'}">58 mm roll</button>
+          <button type="button" data-v="1" class="${S.btPaper === '80' ? 'on' : ''}">80 mm roll</button>
+        </div>
+        <div class="seg" id="sBtCut">
+          <button type="button" data-v="0" class="${S.btCut ? '' : 'on'}">No cutter (tear off)</button>
+          <button type="button" data-v="1" class="${S.btCut ? 'on' : ''}">Has auto-cutter</button>
+        </div>
+        <div class="range">
+          <label>CHARACTERS PER LINE<input id="sBtCols" inputmode="numeric" value="${esc(S.btCols)}" placeholder="Standard: 32 (58 mm) / 48 (80 mm)" maxlength="2" autocomplete="off" /></label>
+        </div>
+        <div class="btn-row" style="margin-bottom:0">
+          <button type="button" class="btn grow" id="sBtPick">🔷 Choose printer</button>
+          <button type="button" class="btn grow" id="sBtTest">Test Bluetooth print</button>
+        </div>
+        <div class="hint">Adds a “Bluetooth Print” button to invoices, statements and payment receipts. First pair the
+          printer in Android Settings → Bluetooth, then tap “Choose printer” (needs the SwiftBill Android app, version
+          1.2.0 or newer). Use Test: if its digit line wraps or stops short, set Characters per line. Choose
+          “Has auto-cutter” only if the printer cuts paper. Works with Bluetooth Classic (SPP) ESC/POS printers;
+          Bluetooth Low Energy-only printers are not supported.</div></div>
       <button class="btn" style="width:100%;margin-bottom:12px" id="sProducts">📦 Product Catalog (${S.products.length})</button>
       <div class="stats">
         <div class="stat"><div class="stat-l">CUSTOMERS</div><div class="stat-v">${S.customers.length}</div></div>
@@ -2659,6 +2694,9 @@ function openMenu() {
         const pr = readPrinterFields();
         if (pr.error) return toast(pr.error);
         S.printerHost = pr.host; S.printerPort = pr.port;
+        const bt = readBtFields();
+        if (bt.error) return toast(bt.error);
+        Object.assign(S, bt);
         save(); renderHeader(); closeModal(); toast('Settings saved');
       };
       $('sPrTest').onclick = () => {
@@ -2667,9 +2705,15 @@ function openMenu() {
         if (!pr.host) return toast('Enter the printer IP first');
         sendDirectPrint(escposTestJob(pr.host, pr.port), 'Test print', pr.host, pr.port);
       };
-      $('sPrint').querySelectorAll('button').forEach(b => b.onclick = () => {
-        $('sPrint').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
-      });
+      ['sPrint', 'sBt', 'sBtPaper', 'sBtCut'].forEach(id => $(id).querySelectorAll('button').forEach(b => b.onclick = () => {
+        $(id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+      }));
+      $('sBtPick').onclick = () => openBluetoothApp('pick=1');
+      $('sBtTest').onclick = () => {
+        const bt = readBtFields();
+        if (bt.error) return toast(bt.error);
+        sendBluetoothPrint(btTestJob(btJobOpts(bt)), 'Test print');
+      };
       $('sProducts').onclick = openProducts;
       $('sExport').onclick = exportBackup;
       $('sImport').onclick = () => $('importFile').click();
@@ -2788,7 +2832,7 @@ $('itemsList').addEventListener('change', e => {
   const card = e.target.closest('[data-id]');
   const it = card && S.current.items.find(x => x.id === card.dataset.id);
   const p = it && getProduct(it.name);
-  if (!p || p.rate === num(it.rate)) return;
+  if (!p || !p.rate || p.rate === num(it.rate)) return;
   it.rate = p.rate;
   card.querySelector('[data-f="rate"]').value = p.rate;
   card.querySelector('.it-total').textContent = fmt(signedTotal(it));
@@ -2838,6 +2882,13 @@ $('noteInput').addEventListener('keydown', e => {
   else e.target.blur();
 });
 $('noteInput').addEventListener('input', renderSuggest);
+const openLibraryFromField = e => {
+  if (CLIENT_MODE || modalOpen() || e.target.value || document.activeElement === e.target || (e.type === 'mousedown' && e.button !== 0)) return;
+  e.preventDefault();
+  openNameLibrary();
+};
+$('noteInput').addEventListener('touchstart', openLibraryFromField, { passive: false });
+$('noteInput').addEventListener('mousedown', openLibraryFromField);
 $('noteInput').addEventListener('focus', renderSuggest);
 $('noteInput').addEventListener('blur', () => setTimeout(() => $('suggestBox').classList.add('hidden'), 150));
 $('suggestBox').addEventListener('pointerdown', e => e.preventDefault());   // keep focus while tapping
@@ -2880,9 +2931,9 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) save(
 const DEFAULT_NAME = /^(item|scrap item) \d+$/i;   // auto-generated names are not saved
 
 function upsertProduct(name, rate, type, bump = true) {
-  name = String(name || '').trim();
+  name = cleanName(name);
   rate = round2(num(rate));
-  if (!name || DEFAULT_NAME.test(name) || rate <= 0) return;
+  if (name.length < 2 || DEFAULT_NAME.test(name) || rate <= 0) return;
   const key = name.toLowerCase();
   const p = S.products.find(x => x.key === key);
   if (p) {
@@ -2894,7 +2945,8 @@ function upsertProduct(name, rate, type, bump = true) {
   refreshProductDatalist();
 }
 
-const getProduct = name => S.products.find(p => p.key === String(name || '').trim().toLowerCase()) || null;
+const cleanName = s => String(s || '').replace(/\s+/g, ' ').trim();
+const getProduct = name => S.products.find(p => p.key === cleanName(name).toLowerCase()) || null;
 
 /** Best matches first: names that start with the query, then names containing it. */
 function findProducts(q, limit = 6) {
@@ -2920,16 +2972,17 @@ function renderSuggest() {
   box.innerHTML = list.map(p => `
     <button type="button" data-key="${esc(p.key)}">
       <span class="sg-name">${esc(p.name)} ${p.type === 'SCRAP' ? '<span class="tag scrap">SCRAP</span>' : ''}</span>
-      <b>${fmt(p.rate)}</b>
+      <b>${p.rate ? fmt(p.rate) : ''}</b>
     </button>`).join('');
   box.classList.remove('hidden');
 }
 
 function pickProduct(p) {
   $('noteInput').value = p.name;
-  calc.expr = String(p.rate) + 'x';     // rate filled, waiting for qty (ADD alone = qty 1)
   $('suggestBox').classList.add('hidden');
   $('noteInput').blur();                // close the phone keyboard so the keypad is usable
+  if (!p.rate) return toast(`${p.name} — type the rate, then ADD`);   // name saved without a rate
+  calc.expr = String(p.rate) + 'x';     // rate filled, waiting for qty (ADD alone = qty 1)
   renderDisplay();
   toast(`${p.name} @ ${fmt(p.rate)} — type qty, then ADD`);
 }
@@ -2952,7 +3005,7 @@ function openProducts() {
               <div class="row-t">${esc(p.name)} ${p.type === 'SCRAP' ? '<span class="tag scrap">SCRAP</span>' : ''}</div>
               <div class="row-s">Used ${p.uses || 0}× · ${fmtDate(p.updatedAt, false)}</div>
             </div>
-            <div class="row-r"><div class="amt">${fmt(p.rate)}</div></div>
+            <div class="row-r"><div class="amt">${p.rate ? fmt(p.rate) : '—'}</div></div>
             <button class="del" data-delp="${esc(p.key)}" aria-label="Delete product">✕</button>
           </div>`).join('')
           : `<div class="empty">${q ? 'No product matches.' : 'No products yet.<br>Type an item name in the note field before pressing ADD.'}</div>`;
@@ -2962,9 +3015,13 @@ function openProducts() {
       $('pList').addEventListener('click', e => {
         const del = e.target.closest('[data-delp]');
         if (del) {
-          S.products = S.products.filter(p => p.key !== del.dataset.delp);
-          save(); refreshProductDatalist(); draw();
-          return toast('Product removed');
+          const p = S.products.find(x => x.key === del.dataset.delp);
+          return p && confirmDialog('Delete saved product?',
+            `<b>${esc(p.name)}</b> will be removed from the saved list. Bills that already use it are not changed.`, 'Delete', () => {
+              S.products = S.products.filter(x => x !== p);
+              save(); refreshProductDatalist(); openProducts();
+              toast('Product removed');
+            }, 'danger');
         }
         const row = e.target.closest('[data-key]');
         const p = row && S.products.find(x => x.key === row.dataset.key);
@@ -2976,6 +3033,142 @@ function openProducts() {
           save(); openProducts(); toast('Rate updated');
         });
       });
+    }
+  });
+}
+
+/* ---------- Saved item-name library ----------
+   Tapping the empty item-name field opens this list (same S.products list as the catalog).
+   Picking a name only fills the field: rate, qty and the bill are not touched. Renaming or
+   deleting a saved name never changes bills, which keep their own copy of each item name.
+   Keyboard focus / typing into the field works exactly as before. */
+function openNameLibrary(q0 = '') {
+  openModal({
+    title: 'Saved Item Names',
+    body: `
+      <input class="search" id="nlSearch" type="search" placeholder="Search or type a name…" autocomplete="off" enterkeyhint="done" maxlength="80" value="${esc(q0)}" />
+      <div class="btn-row">
+        <button type="button" class="btn grow" id="nlType">⌨ Type in item field</button>
+        <button type="button" class="btn grow indigo" id="nlAdd">+ Add name</button>
+      </div>
+      <div id="nlList"></div>`,
+    footer: `<button class="btn grow" id="nlClose">Close</button>`,
+    onMount: () => {
+      const search = $('nlSearch');
+      const LIMIT = 300;
+      const draw = () => {
+        const typed = cleanName(search.value), q = typed.toLowerCase();
+        const all = S.products.filter(p => !q || p.key.includes(q)).sort((a, b) => a.name.localeCompare(b.name));
+        const exact = q && S.products.some(p => p.key === q);
+        $('nlList').innerHTML = (q && !exact ? `
+          <button type="button" class="row" data-use="1">
+            <div class="row-main"><div class="row-t">Use “${esc(typed)}”</div>
+              <div class="row-s">Fills the item name · saved when the item is added to the bill</div></div>
+          </button>` : '') + (all.length ? all.slice(0, LIMIT).map(p => `
+          <div class="row nl-row" data-key="${esc(p.key)}" role="button" tabindex="0">
+            <div class="row-main">
+              <div class="row-t">${esc(p.name)} ${p.type === 'SCRAP' ? '<span class="tag scrap">SCRAP</span>' : ''}</div>
+              ${p.rate ? `<div class="row-s">Last rate ${fmt(p.rate)}</div>` : ''}
+            </div>
+            <button type="button" class="del nl-ed" data-ren="${esc(p.key)}" aria-label="Rename ${esc(p.name)}">✎</button>
+            <button type="button" class="del" data-delp="${esc(p.key)}" aria-label="Delete ${esc(p.name)}">✕</button>
+          </div>`).join('') + (all.length > LIMIT ? `<div class="muted nl-more">${all.length - LIMIT} more — type to search</div>` : '')
+          : `<div class="empty">${q ? 'No saved name matches.' : 'No saved names yet.<br>Names are saved when you add a named item, or tap “+ Add name”.'}</div>`);
+      };
+      const fill = name => {
+        $('noteInput').value = name;
+        $('suggestBox').classList.add('hidden');
+        closeModal();
+        toast('Item name: ' + name);
+      };
+      draw();
+      search.addEventListener('input', draw);
+      search.addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const typed = cleanName(search.value);
+        if (typed) fill((getProduct(typed) || { name: typed }).name);
+      });
+      $('nlClose').onclick = closeModal;
+      $('nlType').onclick = () => { closeModal(); $('noteInput').focus(); };
+      $('nlAdd').onclick = () => {
+        const typed = cleanName(search.value);
+        if (typed) return addLibraryName(typed, typed);
+        textPrompt('Add item name', '', 'Saved for quick selection. No rate or stock is stored.',
+          v => addLibraryName(v, ''), () => openNameLibrary());
+      };
+      $('nlList').addEventListener('click', e => {
+        const q = search.value;
+        if (e.target.closest('[data-use]')) return fill(cleanName(q));
+        const ren = e.target.closest('[data-ren]');
+        const del = e.target.closest('[data-delp]');
+        const row = e.target.closest('[data-key]');
+        const p = row && S.products.find(x => x.key === row.dataset.key);
+        if (!p) return;
+        if (ren) {
+          return textPrompt('Rename saved name', p.name, 'Only the saved list changes. Bills that already use the old name keep it.',
+            v => renameLibraryName(p, v, q), () => openNameLibrary(q));
+        }
+        if (del) {
+          return confirmDialog('Delete saved name?',
+            `<b>${esc(p.name)}</b> will be removed from the saved list. Bills that already use it are not changed.`, 'Delete', () => {
+              S.products = S.products.filter(x => x !== p);
+              save(); refreshProductDatalist();
+              toast('Name deleted');
+              openNameLibrary(q);
+            }, 'danger');
+        }
+        fill(p.name);
+      });
+    }
+  });
+}
+
+/** Checks a library name; returns an error message or null. */
+function libraryNameError(name, exceptKey) {
+  if (name.length < 2) return 'Enter a name (at least 2 characters)';
+  if (DEFAULT_NAME.test(name)) return 'That name is used for unnamed items — choose another';
+  const dup = S.products.find(p => p.key === name.toLowerCase() && p.key !== exceptKey);
+  return dup ? `Already saved as “${dup.name}”` : null;
+}
+
+function addLibraryName(raw, q) {
+  const name = cleanName(raw);
+  const err = libraryNameError(name, null);
+  if (err) { toast(err); return openNameLibrary(q); }
+  S.products.push({ key: name.toLowerCase(), name, rate: 0, type: 'SALE', uses: 0, updatedAt: Date.now() });
+  save(); refreshProductDatalist();
+  toast('Name saved');
+  openNameLibrary(q);
+}
+
+function renameLibraryName(p, raw, q) {
+  const name = cleanName(raw);
+  const err = libraryNameError(name, p.key);
+  if (err) { toast(err); return openNameLibrary(q); }
+  p.name = name; p.key = name.toLowerCase(); p.updatedAt = Date.now();
+  save(); refreshProductDatalist();
+  toast('Name updated');
+  openNameLibrary(q);
+}
+
+/** Single-line text input dialog. */
+function textPrompt(title, initial, hint, onOk, onBack) {
+  openModal({
+    title,
+    back: onBack,
+    body: `<div class="field">
+             <input id="tpIn" type="text" maxlength="80" autocomplete="off" enterkeyhint="done" value="${esc(initial)}" />
+             <div class="hint">${hint || ''}</div>
+           </div>`,
+    footer: `<button class="btn grow" id="tpNo">Cancel</button><button class="btn grow primary" id="tpOk">Save</button>`,
+    onMount: () => {
+      const inp = $('tpIn');
+      const submit = () => onOk(inp.value);
+      $('tpNo').onclick = onBack || closeModal;
+      $('tpOk').onclick = submit;
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+      setTimeout(() => { inp.focus(); inp.select(); }, 50);
     }
   });
 }
@@ -3720,12 +3913,13 @@ function showDepositSlip(customerId, entryId, onBack) {
         ${c.phone ? '' : '<div class="muted" style="font-size:12px">No phone saved for this customer — WhatsApp will ask you to choose the chat.</div>'}
       </div>` + html,
     footer: `<button class="btn f2" id="dsPrint">🖨 Print</button>
-             <button class="btn f2 indigo" id="dsPdf">⬇ Download Full PDF</button>`,
+             <button class="btn f2 indigo" id="dsPdf">⬇ Download Full PDF</button>${wifiPrintButtonHTML('dsWifi')}${btPrintButtonHTML('dsBt')}`,
     footerClass: 'wrap',
     onMount: () => {
       $('dsWa').onclick = () => openWhatsApp(normalizePhone(c.phone), depositText(c, e));
       $('dsPrint').onclick = () => printHTML(html);
       $('dsPdf').onclick = ev => downloadPDF(html, `Receipt-${receiptLabel(e)}.pdf`, ev.currentTarget);
+      wireDirectPrint('dsWifi', 'dsBt', 'Receipt ' + receiptLabel(e), o => depositEscPos(c, e, o));
     }
   });
 }
@@ -3887,7 +4081,7 @@ function openStatement(customerId, onBack, range) {
       </div>
       ${html}`,
     footer: `<button class="btn f2" id="stPrint">🖨 Print</button>
-             <button class="btn f2 indigo" id="stPdf">⬇ Download Full PDF</button>`,
+             <button class="btn f2 indigo" id="stPdf">⬇ Download Full PDF</button>${wifiPrintButtonHTML('stWifi')}${btPrintButtonHTML('stBt')}`,
     footerClass: 'wrap',
     onMount: () => {
       const go = (from, to) => {
@@ -3903,6 +4097,7 @@ function openStatement(customerId, onBack, range) {
       $('stWa').onclick = () => openWhatsApp(normalizePhone(c.phone), statementText(c, data, period));
       $('stPrint').onclick = () => printHTML(html);
       $('stPdf').onclick = ev => downloadPDF(html, `Statement-${c.name.replace(/[^\w-]+/g, '_')}.pdf`, ev.currentTarget);
+      wireDirectPrint('stWifi', 'stBt', 'Statement', o => statementEscPos(c, data, period, o));
     }
   });
 }
@@ -3955,9 +4150,10 @@ function escposLR(left, right, cols = ESCPOS_COLS) {
   return [left + right.padStart(cols - left.length)];
 }
 
-function receiptEscPos(rec) {
+/** opts (Bluetooth only): { cols: characters per line, cut: printer has a cutter }. Without opts: the Wi-Fi job. */
+function receiptEscPos(rec, opts) {
   const ESC = 0x1b, GS = 0x1d;
-  const W = ESCPOS_COLS;                 // 48 characters (Font A, 80 mm)
+  const W = (opts && opts.cols) || ESCPOS_COLS;   // 48 characters (Font A, 80 mm); 58 mm rolls: 32
   const bytes = [];
   const raw = (...b) => bytes.push(...b);
   const text = s => { for (const ch of escposAscii(s)) bytes.push(ch.charCodeAt(0)); };
@@ -3984,17 +4180,17 @@ function receiptEscPos(rec) {
 
   // ---- Header ----
   align(1); bold(true); size(2, 2);
-  escposWrap(S.shopName || 'SWIFTBILL POS', W / 2).forEach(l => line(l));
+  escposWrap(S.shopName || 'SWIFTBILL POS', Math.floor(W / 2)).forEach(l => line(l));
   size(1, 1); bold(false);
-  line('C U S T O M E R   I N V O I C E');
+  line(W >= 31 ? 'C U S T O M E R   I N V O I C E' : 'CUSTOMER INVOICE');
   align(0);
   rule('=');
 
   // ---- Bill details: two aligned columns, values bold ----
   const meta = (l1, v1, l2, v2) => {
-    const left = escposWrap(l1 + ': ' + v1, 30), right = escposAscii(l2 + ': ' + v2);
+    const left = escposWrap(l1 + ': ' + v1, Math.round(W * 30 / 48)), right = escposAscii(l2 + ': ' + v2);
     bold(true);
-    escposLR(left[0], right).forEach(l => line(l));
+    escposLR(left[0], right, W).forEach(l => line(l));
     left.slice(1).forEach(l => line(l));
     bold(false);
   };
@@ -4037,7 +4233,7 @@ function receiptEscPos(rec) {
   if (scraps.length) table('SCRAP / DEDUCTION', scraps, true);
 
   // ---- Totals ----
-  const sum = (l, r) => escposLR(l, r).forEach(x => line(x));
+  const sum = (l, r) => escposLR(l, r, W).forEach(x => line(x));
   line();
   sum('Sale Amount', fmt(rec.saleAmt));
   sum('Scrap Deduction', fmt(-rec.scrapAmt));
@@ -4068,11 +4264,130 @@ function receiptEscPos(rec) {
     'No cash refunds. Scrap / returned items are deducted at the agreed rate. Thank you for your business!', W).forEach(l => line(l));
   align(0);
   line(); line(); line();
-  line('_'.repeat(20) + ' '.repeat(8) + '_'.repeat(20));
-  line('    Record Copy' + ' '.repeat(18) + 'Auth. Sign');
+  escposSignatures('Record Copy', W).forEach(l => line(l));
   raw(ESC, 0x64, 4);              // feed 4 lines past the cutter
-  raw(GS, 0x56, 0x42, 0);         // single partial cut (printers without a cutter ignore it)
+  if (!opts || opts.cut !== false) raw(GS, 0x56, 0x42, 0);   // single partial cut (skipped for Bluetooth printers without a cutter)
   return new Uint8Array(bytes);
+}
+
+/** Two signature lines with centred captions (at 48 columns: the original fixed layout). */
+function escposSignatures(left, W = ESCPOS_COLS, right = 'Auth. Sign') {
+  const s = Math.floor((W - 8) / 2), gap = W - 2 * s;
+  const at = t => ' '.repeat(Math.max(0, Math.floor((s - t.length) / 2))) + t;
+  return ['_'.repeat(s) + ' '.repeat(gap) + '_'.repeat(s), at(left).padEnd(s + gap) + at(right)];
+}
+
+/** Shared skeleton for the statement / payment slips: same commands as the invoice slip. */
+function escposDoc(opts) {
+  const ESC = 0x1b, GS = 0x1d, W = (opts && opts.cols) || ESCPOS_COLS, bytes = [];
+  const d = {
+    W, bytes,
+    raw: (...b) => bytes.push(...b),
+    line: (t = '') => { for (const ch of escposAscii(t)) bytes.push(ch.charCodeAt(0)); bytes.push(0x0a); },
+    align: a => bytes.push(ESC, 0x61, a),
+    bold: on => bytes.push(ESC, 0x45, on ? 1 : 0),
+    size: (w, h) => bytes.push(GS, 0x21, ((w - 1) << 4) | (h - 1)),
+    rule: (ch = '-') => { bytes.push(ESC, 0x33, 16); d.line(ch.repeat(W)); bytes.push(ESC, 0x32); },
+    sum: (l, r) => escposLR(l, r, W).forEach(x => d.line(x)),
+    wrap: (t, indent = '') => escposWrap(t, W - indent.length).forEach(l => d.line(indent + l)),
+    header: title => {
+      bytes.push(ESC, 0x40, ESC, 0x74, 0);
+      d.align(1); d.bold(true); d.size(2, 2);
+      escposWrap(S.shopName || 'SWIFTBILL POS', Math.floor(W / 2)).forEach(l => d.line(l));
+      d.size(1, 1);
+      d.wrap(title);
+      d.bold(false); d.align(0);
+      d.rule('=');
+    },
+    footer: (policy, signLeft) => {
+      d.align(1); d.wrap(policy); d.align(0);
+      d.line(); d.line(); d.line();
+      escposSignatures(signLeft, W).forEach(l => d.line(l));
+      bytes.push(ESC, 0x64, 4);
+      if (!opts || opts.cut !== false) bytes.push(GS, 0x56, 0x42, 0);
+      return new Uint8Array(bytes);
+    }
+  };
+  return d;
+}
+
+/**
+ * Customer statement slip, built from the same data as the on-screen statement
+ * (same date filter, same order, same running balance). Read-only.
+ * Each entry: date + reference, details, then DEBIT / CREDIT / BALANCE on one line;
+ * if the amounts are too wide for the roll they go on separate lines instead.
+ */
+function statementEscPos(c, data, period, opts) {
+  const d = escposDoc(opts), W = d.W;
+  d.header('CUSTOMER STATEMENT');
+  d.bold(true); d.wrap('Customer: ' + c.name); d.bold(false);
+  if (c.phone) d.wrap('Phone: ' + c.phone);
+  d.wrap('Period: ' + period);
+  d.wrap('Printed: ' + fmtDate(Date.now()));
+  d.rule('=');
+  d.bold(true); d.sum('Opening Balance', plain(data.opening)); d.bold(false);
+  d.rule('=');
+  const amounts = data.lines.map(l => [l.debit ? plain(l.debit) : '', l.credit ? plain(l.credit) : '', plain(l.balance)]);
+  const heads = ['DEBIT', 'CREDIT', 'BALANCE'];
+  const w = heads.map((h, k) => Math.max(h.length, ...amounts.map(a => a[k].length)));
+  const oneLine = w[0] + w[1] + w[2] + 2 <= W;
+  const amtRow = a => a.map((x, k) => escposPad(x, w[k], true)).join(' ').padStart(W);
+  if (!data.lines.length) {
+    d.line('No transactions in this period');
+    d.rule();
+  } else {
+    d.bold(true); d.line('DATE / REFERENCE / DETAILS'); if (oneLine) d.line(amtRow(heads)); d.bold(false);
+    d.rule('=');
+    data.lines.forEach((l, i) => {
+      const dash = t => t.replace(/ · /g, ' - ');   // '·' is not in the printer's ASCII set
+      d.bold(true); d.wrap(shortDate(l.date) + '  ' + dash(l.desc.title)); d.bold(false);
+      if (l.desc.sub) d.wrap(dash(l.desc.sub), '  ');
+      if (oneLine) d.line(amtRow(amounts[i]));
+      else {
+        if (l.debit) d.sum('  Debit', amounts[i][0]);
+        if (l.credit) d.sum('  Credit', amounts[i][1]);
+        d.sum('  Balance', amounts[i][2]);
+      }
+      d.rule();
+    });
+  }
+  d.sum('Entries in period', String(data.lines.length));
+  d.sum('Total Debit (invoiced)', plain(data.totalDebit));
+  d.sum('Total Credit (paid)', plain(data.totalCredit));
+  d.rule('=');
+  d.bold(true); d.size(1, 2);
+  d.sum('CLOSING BALANCE', fmtBalCust(data.closing));
+  d.size(1, 1); d.bold(false);
+  d.rule('=');
+  return d.footer('Debit = invoices / amounts charged to your account. Credit = payments and scrap deductions. ' +
+    'A positive balance is the amount due from you; a negative balance is an advance in your favour.', 'Customer Sign');
+}
+
+/** Payment receipt / voucher slip for one saved Khata payment. Read-only: reprints show the same values. */
+function depositEscPos(c, e, opts) {
+  const d = escposDoc(opts);
+  const dt = new Date(e.date), isIn = e.type === 'PAYMENT IN', prev = round2(e.balance - e.delta);
+  d.header(isIn ? 'CUSTOMER PAYMENT RECEIPT' : 'PAYMENT VOUCHER');
+  d.bold(true); d.sum('Receipt No', receiptLabel(e)); d.bold(false);
+  d.sum('Date', dt.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }));
+  d.sum('Time', dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
+  d.bold(true); d.wrap('Customer: ' + c.name); d.bold(false);
+  if (c.phone) d.sum('Phone', c.phone);
+  if (e.method) d.sum('Payment Method', e.method);
+  d.rule('=');
+  d.sum('Previous Balance', fmtBalCust(prev));
+  d.rule();
+  d.bold(true); d.size(1, 2);
+  d.sum(isIn ? 'AMOUNT RECEIVED' : 'AMOUNT PAID', (isIn ? '- ' : '+ ') + fmt(e.paid));
+  d.size(1, 1); d.bold(false);
+  d.rule();
+  d.bold(true); d.sum('Remaining Balance', fmtBalCust(e.balance)); d.bold(false);
+  d.rule('=');
+  if (e.remark) { d.wrap('Note: ' + e.remark); d.rule(); }
+  return d.footer((isIn
+    ? 'Received with thanks. This amount has been credited to your Khata account.'
+    : 'This amount has been paid to you and adjusted in your Khata account.') +
+    ' Please keep this receipt for your records.', 'Customer Sign');
 }
 
 /** Short job to confirm the IP, port and ESC/POS support with real paper. */
@@ -4098,6 +4413,13 @@ function isPrivateIPv4(h) {
   const [a, b] = [+m[1], +m[2]];
   if ([m[1], m[2], m[3], m[4]].some(x => +x > 255)) return false;
   return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+}
+
+function readBtFields() {
+  const on = id => $(id).querySelector('.on').dataset.v === '1';
+  const txt = $('sBtCols').value.trim(), cols = parseInt(txt, 10);
+  if (txt && (!/^\d{1,2}$/.test(txt) || cols < 24 || cols > 64)) return { error: 'Characters per line must be 24–64 (or empty)' };
+  return { btEnabled: on('sBt'), btPaper: on('sBtPaper') ? '80' : '58', btCols: txt ? String(cols) : '', btCut: on('sBtCut') };
 }
 
 function readPrinterFields() {
@@ -4141,6 +4463,65 @@ function directPrintReceipt(rec) {
   sendDirectPrint(receiptEscPos(rec), 'Invoice #' + rec.no, S.printerHost, S.printerPort);
 }
 
+/* ---------- Direct Bluetooth print (Android app 1.2.0+) ----------
+   Same idea as Wi-Fi: the job is built here and handed to the app with
+   swiftbill-print://bt?n=<label>&d=<base64url>. The app sends it over Bluetooth Classic (SPP)
+   to the paired printer chosen in the app (swiftbill-print://bt?pick=1 opens that list).
+   No internet is used. */
+const BT_PRINT_MISSING = '#btprint-unavailable';
+
+/** Characters per line and cutter for Bluetooth jobs (cfg: saved settings or the Settings form). */
+function btJobOpts(cfg = S) {
+  const cols = parseInt(cfg.btCols, 10);
+  return { cols: cols >= 24 && cols <= 64 ? cols : (cfg.btPaper === '80' ? 48 : 32), cut: !!cfg.btCut };
+}
+
+function btPrintButtonHTML(id) {
+  return S.btEnabled && IS_ANDROID ? `<button class="btn f2" id="${id}">🔷 Bluetooth Print</button>` : '';
+}
+
+function openBluetoothApp(query) {
+  if (!IS_ANDROID) return toast('Bluetooth printing works in the SwiftBill Android app');
+  const fallback = location.href.split('#')[0] + BT_PRINT_MISSING;
+  const a = document.createElement('a');
+  a.href = `intent://bt?${query}#Intent;scheme=swiftbill-print;package=com.swiftbill.pos;S.browser_fallback_url=${encodeURIComponent(fallback)};end`;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+function sendBluetoothPrint(bytes, label) {
+  openBluetoothApp(`n=${encodeURIComponent(label)}&d=${bytesToBase64Url(bytes)}`);
+}
+
+/** Read-only: wires the Wi-Fi / Bluetooth buttons of a document; build(opts) returns its ESC/POS job. */
+function wireDirectPrint(wifiId, btId, label, build) {
+  if ($(wifiId)) $(wifiId).onclick = () => sendDirectPrint(build(), label, S.printerHost, S.printerPort);
+  if ($(btId)) $(btId).onclick = () => sendBluetoothPrint(build(btJobOpts()), label);
+}
+
+/** Shows the printer's real line width: the digit line must fill exactly one line. */
+function btTestJob(opts) {
+  const d = escposDoc(opts), W = d.W;
+  d.header('Bluetooth print test');
+  d.line(new Date().toLocaleString());
+  d.line(W + ' characters per line:');
+  d.line('1234567890'.repeat(Math.ceil(W / 10)).slice(0, W));
+  d.rule();
+  d.wrap('The digit line above must fill exactly one line. If it wraps or stops short, change ' +
+    '"Characters per line" in SwiftBill Settings.');
+  d.line(opts.cut ? 'The paper is cut below.' : 'No cut command sent (no cutter selected).');
+  d.raw(0x1b, 0x64, 4);
+  if (opts.cut) d.raw(0x1d, 0x56, 0x42, 0);
+  return new Uint8Array(d.bytes);
+}
+
+window.addEventListener('hashchange', () => {
+  if (location.hash !== BT_PRINT_MISSING) return;
+  history.replaceState(null, '', location.href.split('#')[0]);
+  confirmDialog('Bluetooth Print needs the SwiftBill app',
+    'Direct Bluetooth printing works only in the SwiftBill Android app, version 1.2.0 or newer. Install or update the app, ' +
+    'or use the normal 🖨 Print button.', 'OK', () => {});
+});
+
 // The app is missing or too old: Chrome opened the fallback address instead
 window.addEventListener('hashchange', () => {
   if (location.hash !== DIRECT_PRINT_MISSING) return;
@@ -4159,6 +4540,8 @@ if (location.hash.startsWith('#inv=')) {
   load();
   save();
   render();
+  // Bills live only on this device: ask the browser not to clear them when storage runs low
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 }
 // Offline support when hosted on http(s) — needed for the installable app / APK
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
