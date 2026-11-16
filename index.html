@@ -3235,12 +3235,110 @@ async function encodeInvoice(obj) {
 }
 
 async function decodeInvoice(token) {
-  const m = /^([jz])([A-Za-z0-9_-]+)\.([0-9a-z]+)$/.exec(token || '');
+  // No end anchor: chat apps sometimes add "." ")" "*" or invisible characters after a link; the checksum still guards the data
+  const m = /^([jz])([A-Za-z0-9_-]+)\.([0-9a-z]+)/.exec(token || '');
   if (!m) throw new Error('format');
   if (checksum(LINK_SALT + m[1] + m[2]) !== m[3]) throw new Error('checksum');
   let bytes = b64urlDecode(m[2]);
-  if (m[1] === 'z') bytes = await streamBytes(bytes, new DecompressionStream('deflate-raw'));
+  if (m[1] === 'z') bytes = await inflateBytes(bytes);
   return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+/** 'deflate-raw' needs Chrome 103+ / Safari 16.4+ / Firefox 113+; older customer phones use inflateRaw() below. */
+async function inflateBytes(bytes) {
+  if (window.DecompressionStream) {
+    try { return await streamBytes(bytes, new DecompressionStream('deflate-raw')); } catch (e) { /* format not supported */ }
+  }
+  return inflateRaw(bytes);
+}
+
+/** Small raw-DEFLATE decoder (RFC 1951, after zlib's puff.c) — only used when the browser can't decompress. */
+function inflateRaw(data) {
+  const out = [];
+  let pos = 0, bit = 0;
+  const bits = n => {
+    let v = 0;
+    for (let i = 0; i < n; i++) {
+      if (pos >= data.length) throw new Error('inflate');
+      v |= ((data[pos] >> bit) & 1) << i;
+      if (++bit === 8) { bit = 0; pos++; }
+    }
+    return v;
+  };
+  const build = lengths => {
+    const count = new Uint16Array(16), offs = new Uint16Array(16), sym = new Uint16Array(lengths.length);
+    for (const l of lengths) count[l]++;
+    count[0] = 0;
+    for (let i = 1; i < 16; i++) offs[i] = offs[i - 1] + count[i - 1];
+    for (let s = 0; s < lengths.length; s++) if (lengths[s]) sym[offs[lengths[s]]++] = s;
+    return { count, sym };
+  };
+  const decode = h => {
+    let code = 0, first = 0, index = 0;
+    for (let len = 1; len < 16; len++) {
+      code |= bits(1);
+      const c = h.count[len];
+      if (code - c < first) return h.sym[index + (code - first)];
+      index += c; first = (first + c) << 1; code <<= 1;
+    }
+    throw new Error('inflate');
+  };
+  const LBASE = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
+  const LEXT = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
+  const DBASE = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577];
+  const DEXT = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
+  let last;
+  do {
+    last = bits(1);
+    const type = bits(2);
+    if (type === 0) {                                     // stored block
+      if (bit) { bit = 0; pos++; }
+      if (pos + 4 > data.length) throw new Error('inflate');
+      const len = data[pos] | (data[pos + 1] << 8);
+      pos += 4;
+      if (pos + len > data.length) throw new Error('inflate');
+      for (let i = 0; i < len; i++) out.push(data[pos++]);
+      continue;
+    }
+    if (type === 3) throw new Error('inflate');
+    let lit, dist;
+    if (type === 1) {                                     // fixed Huffman codes
+      const l = [];
+      for (let i = 0; i < 288; i++) l.push(i < 144 ? 8 : i < 256 ? 9 : i < 280 ? 7 : 8);
+      lit = build(l); dist = build(new Array(30).fill(5));
+    } else {                                              // dynamic Huffman codes
+      const hlit = bits(5) + 257, hdist = bits(5) + 1, hclen = bits(4) + 4;
+      const ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+      const cl = new Array(19).fill(0);
+      for (let i = 0; i < hclen; i++) cl[ORDER[i]] = bits(3);
+      const ch = build(cl), lens = [];
+      while (lens.length < hlit + hdist) {
+        const s = decode(ch);
+        if (s < 16) { lens.push(s); continue; }
+        let rep, val = 0;
+        if (s === 16) { if (!lens.length) throw new Error('inflate'); val = lens[lens.length - 1]; rep = 3 + bits(2); }
+        else if (s === 17) rep = 3 + bits(3);
+        else rep = 11 + bits(7);
+        while (rep--) lens.push(val);
+      }
+      if (lens.length > hlit + hdist) throw new Error('inflate');
+      lit = build(lens.slice(0, hlit)); dist = build(lens.slice(hlit));
+    }
+    for (;;) {
+      const s = decode(lit);
+      if (s < 256) { out.push(s); continue; }
+      if (s === 256) break;
+      const i = s - 257;
+      if (i >= 29) throw new Error('inflate');
+      const len = LBASE[i] + bits(LEXT[i]);
+      const d = decode(dist);
+      if (d >= 30) throw new Error('inflate');
+      const back = DBASE[d] + bits(DEXT[d]);
+      if (back > out.length) throw new Error('inflate');
+      for (let k = 0; k < len; k++) out.push(out[out.length - back]);
+    }
+  } while (!last);
+  return new Uint8Array(out);
 }
 
 /** Compact payload with short keys to keep links short. */
@@ -3376,8 +3474,12 @@ async function bootClientView() {
 
   let p;
   try {
-    p = await decodeInvoice(decodeURIComponent(location.hash.slice(5)));
+    const raw = location.hash.slice(5);
+    let token = raw;
+    try { token = decodeURIComponent(raw); } catch (e) { /* stray "%" added after the link */ }
+    p = await decodeInvoice(token);
   } catch (e) {
+    console.warn('E-invoice link rejected:', e && e.message);
     cv.innerHTML = clientMessage('⚠️', 'Invalid invoice link',
       'This link is damaged or incomplete. Please ask the shop to send the invoice again.');
     return;
