@@ -3453,12 +3453,75 @@ function eInvoiceBarHTML() {
         <button class="btn sm" id="eiPrev">Preview</button>
         <span class="muted">Link expires in 3 days</span>
       </div>
+      <div class="share-sub">
+        <button class="btn sm" id="eiPdf">📄 Share PDF</button>
+        <span class="muted">Choose WhatsApp, then the customer</span>
+      </div>
     </div>`;
 }
 function wireEInvoiceBar(rec) {
   $('eiSend').onclick = () => sendEInvoice(rec);
   $('eiCopy').onclick = () => copyInvoiceLink(rec);
   $('eiPrev').onclick = () => previewInvoiceLink(rec);
+  $('eiPdf').onclick = e => shareInvoicePDF(rec, e.currentTarget);
+}
+
+/** Share the invoice PDF (same as "Download Full PDF") through the phone's share sheet. No upload, works offline. */
+async function shareInvoicePDF(rec, btn) {
+  const latest = S.history.find(h => h.no === rec.no);         // newest saved version of this bill
+  if (!latest) return toast(`Bill #${rec.no} is open for editing — finalize it, then share the PDF`);
+  // A PDF made earlier but not shared in time (see sharePdfFile): share it now, on this fresh tap
+  if (btn.pdfFile && btn.pdfRec === latest) return sharePdfFile(btn, latest);
+  const label = btn.dataset.label || (btn.dataset.label = btn.textContent);
+  btn.disabled = true; btn.textContent = 'Creating PDF…';
+  try {
+    const { doc } = await buildInvoicePDF(latest);
+    btn.pdfDoc = doc;
+    btn.pdfFile = new File([doc.output('blob')], `Invoice-${latest.no}.pdf`, { type: 'application/pdf' });
+    btn.pdfRec = latest;
+  } catch (e) {
+    console.error(e);
+    btn.textContent = label;
+    return toast('Could not create PDF: ' + (e && e.message ? e.message : e));
+  } finally {
+    btn.disabled = false;
+  }
+  btn.textContent = label;
+  return sharePdfFile(btn, latest);
+}
+async function sharePdfFile(btn, rec) {
+  const file = btn.pdfFile, label = btn.dataset.label;
+  const downloaded = why => {
+    btn.pdfDoc.save(file.name);
+    btn.pdfFile = null; btn.textContent = label;
+    pdfShareNote(btn, `${why}, so <b>${esc(file.name)}</b> was downloaded instead.
+      In WhatsApp, open the customer's chat, tap 📎 → Document and choose it.`);
+  };
+  if (!(navigator.canShare && navigator.canShare({ files: [file] }))) return downloaded('This browser can\'t share files directly');
+  try {
+    await navigator.share({ files: [file], title: `Invoice #${rec.no}` });
+    btn.pdfFile = null; btn.textContent = label; pdfShareNote(btn, '');
+  } catch (e) {
+    if (e && e.name === 'AbortError') { btn.pdfFile = null; btn.textContent = label; pdfShareNote(btn, ''); return; }   // share menu closed
+    if (e && e.name === 'NotAllowedError') {
+      // Making the PDF took longer than the phone allows after a tap: keep it and ask for one more tap
+      btn.textContent = '📄 Tap again to share';
+      return pdfShareNote(btn, 'The PDF is ready. Tap “Tap again to share” to open the share menu.');
+    }
+    downloaded('Sharing did not work (' + esc(e && e.message ? e.message : String(e)) + ')');
+  }
+}
+/** Message under the Share PDF button; empty text removes it. */
+function pdfShareNote(btn, html) {
+  const row = btn.parentElement;
+  let note = row.nextElementSibling && row.nextElementSibling.id === 'eiPdfNote' ? row.nextElementSibling : null;
+  if (!html) { if (note) note.remove(); return; }
+  if (!note) {
+    note = document.createElement('div');
+    note.id = 'eiPdfNote'; note.className = 'muted'; note.style.fontSize = '12px';
+    row.after(note);
+  }
+  note.innerHTML = html;
 }
 
 /* =====================================================================
