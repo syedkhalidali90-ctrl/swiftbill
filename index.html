@@ -856,6 +856,8 @@
   .pos-sum { font-size: 12px; font-weight: 700; opacity: .9; margin-left: 4px; }
   .cat-pick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
   .btn.full { flex: 1 1 100%; }
+  .lic-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 0 0 10px; }
+  .lic-row .btn { flex: none; }
   #licRoot { position: fixed; inset: 0; z-index: 100; background: linear-gradient(160deg, #14532d, #166534 55%, #0f172a);
     display: flex; align-items: center; justify-content: center; padding: 18px; overflow-y: auto; }
   body.lic-locked { overflow: hidden; }
@@ -2961,7 +2963,8 @@ function openMenu() {
         <button class="btn grow indigo" id="sExport">⬇ Download Backup</button>
         <button class="btn grow" id="sImport">⬆ Restore Backup</button>
       </div>
-      <p class="muted" id="sLic" style="font-size:12px;margin:0 0 10px"></p>
+      <div class="lic-row"><p class="muted" id="sLic" style="font-size:12px;margin:0"></p>
+        ${LICENSE.apiUrl ? '<button type="button" class="btn sm" id="sLicNow">↻ Check licence now</button>' : ''}</div>
       <div class="sec-title" style="margin-top:4px">DEMO DATA (FOR TESTING)</div>
       <div class="btn-row">
         <button class="btn grow" id="sDemo">🧪 Load demo data</button>
@@ -3004,6 +3007,7 @@ function openMenu() {
       };
       $('sProducts').onclick = openProducts;
       licSettingsLine().then(t => { if ($('sLic')) $('sLic').textContent = t; });
+      if ($('sLicNow')) $('sLicNow').onclick = e => licCheckNow(e.currentTarget);
       $('sDemo').onclick = () => hasDemo() ? toast('Demo data is already loaded') : confirmDialog('Load demo data?',
         'Adds <b>10 products</b>, <b>10 vendors</b>, <b>10 customers</b>, bills, Khata entries and 2 vendor orders so you can try every screen.' +
         ' Your own data is not changed. Remove it later with <b>Remove demo data</b>.', 'Load demo data', () => { loadDemoData(); openMenu(); });
@@ -5124,6 +5128,22 @@ async function licSettingsLine() {
   const left = lic.status === 'TRIAL' && lic.trialEnds ? ` · ${Math.max(0, Math.ceil((lic.trialEnds - licNow(lic)) / 86400000))} days left`
     : lic.status === 'ACTIVE' && lic.expires ? ` · until ${fmtDate(lic.expires, false)}` : '';
   return `Licence: ${lic.status}${left} · Device code ${code}`;
+}
+
+/** Settings button: ask the licence server now and show the fresh status. */
+async function licCheckNow(btn) {
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Checking…';
+  try {
+    const lic = await licCall('check'), d = licDecision(lic);
+    if ($('sLic')) $('sLic').textContent = await licSettingsLine();
+    if (d === 'OK') toast(`Licence: ${lic.status}`);
+    else { closeModal(); licShow(d, lic); }
+  } catch (e) {
+    toast(e.message || 'Could not reach the licence server');
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
 }
 
 /* =====================================================================
