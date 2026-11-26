@@ -856,6 +856,8 @@
   .pos-sum { font-size: 12px; font-weight: 700; opacity: .9; margin-left: 4px; }
   .cat-pick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
   .btn.full { flex: 1 1 100%; }
+  .drv-row { align-items: center; }
+  .drv-row .chip { height: 36px; }
   .lic-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 0 0 10px; }
   .lic-row .btn { flex: none; }
   #licRoot { position: fixed; inset: 0; z-index: 100; background: linear-gradient(160deg, #14532d, #166534 55%, #0f172a);
@@ -2963,6 +2965,9 @@ function openMenu() {
         <button class="btn grow indigo" id="sExport">⬇ Download Backup</button>
         <button class="btn grow" id="sImport">⬆ Restore Backup</button>
       </div>
+      <div class="sec-title">GOOGLE DRIVE BACKUP</div>
+      <p class="muted" id="sDrv" style="font-size:12.5px;line-height:1.5;margin:0 0 8px"></p>
+      <div class="btn-row drv-row" id="sDrvBtns"></div>
       <div class="lic-row"><p class="muted" id="sLic" style="font-size:12px;margin:0"></p>
         ${LICENSE.apiUrl ? '<button type="button" class="btn sm" id="sLicNow">↻ Check licence now</button>' : ''}</div>
       <div class="sec-title" style="margin-top:4px">DEMO DATA (FOR TESTING)</div>
@@ -3006,6 +3011,7 @@ function openMenu() {
         sendBluetoothPrint(btTestJob(btJobOpts(bt)), 'Test print');
       };
       $('sProducts').onclick = openProducts;
+      driveSettingsUI();
       licSettingsLine().then(t => { if ($('sLic')) $('sLic').textContent = t; });
       if ($('sLicNow')) $('sLicNow').onclick = e => licCheckNow(e.currentTarget);
       $('sDemo').onclick = () => hasDemo() ? toast('Demo data is already loaded') : confirmDialog('Load demo data?',
@@ -5147,6 +5153,274 @@ async function licCheckNow(btn) {
 }
 
 /* =====================================================================
+   12g. GOOGLE DRIVE BACKUP
+   Permission: drive.file only (the app sees just the backup files it creates).
+   Sign-in uses Google's same-window redirect (works inside the Android app, no pop-ups).
+   One file per day in "SwiftBill Backup" (same day = overwritten), newest 30 kept.
+   Automatic: once a day when the app opens online; manual: Settings → Backup now.
+   ===================================================================== */
+const DRIVE = {
+  clientId: '782263221894-8sem5ucie33co5p6vusi3f9lev0nqbef.apps.googleusercontent.com',
+  scope: 'https://www.googleapis.com/auth/drive.file',
+  folder: 'SwiftBill Backup',
+  keep: 30,
+  api: 'https://www.googleapis.com/drive/v3',
+  upload: 'https://www.googleapis.com/upload/drive/v3',
+  authUrl: 'https://accounts.google.com/o/oauth2/v2/auth'
+};
+const DRV_KEY = 'swiftbill_drive_v1';
+const DRV_DAY = 24 * 3600 * 1000;
+let drvBusy = false;
+
+const drvLoad = () => { try { return JSON.parse(localStorage.getItem(DRV_KEY)) || {}; } catch (e) { return {}; } };
+const drvSave = st => { try { localStorage.setItem(DRV_KEY, JSON.stringify(st)); } catch (e) { /* storage full */ } };
+const drvTokenOk = st => !!(st.token && st.exp && Date.now() < st.exp);
+/** Where Google sends the phone back: this folder of the site (…/swiftbill/), never …/index.html. */
+const drvRedirectUri = () => location.origin + location.pathname.replace(/[^/]*$/, '');
+
+/** Leave for Google's permission page; `pending` runs when the phone comes back. silent: no screen if already allowed. */
+function driveAuth(pending, silent) {
+  if (!navigator.onLine) return toast('No internet connection');
+  const st = drvLoad();
+  st.state = uid() + uid();
+  st.pending = pending || null;
+  st.silent = !!silent;
+  drvSave(st);
+  const q = new URLSearchParams({
+    client_id: DRIVE.clientId, redirect_uri: drvRedirectUri(), response_type: 'token',
+    scope: DRIVE.scope, include_granted_scopes: 'true', state: st.state
+  });
+  if (silent) q.set('prompt', 'none');
+  location.assign(DRIVE.authUrl + '?' + q.toString());
+}
+
+/** Boot: read Google's answer from the address (#access_token=… or #error=…) and clean the address. */
+function driveHandleRedirect() {
+  const h = location.hash.slice(1);
+  if (!/(^|&)(access_token|error)=/.test(h) || !/(^|&)state=/.test(h)) return;
+  const p = new URLSearchParams(h);
+  history.replaceState(null, '', location.href.split('#')[0]);
+  const st = drvLoad();
+  if (!st.state || p.get('state') !== st.state) { st.state = null; drvSave(st); return; }   // not our request
+  st.state = null;
+  if (p.get('access_token')) {
+    st.token = p.get('access_token');
+    st.exp = Date.now() + (Number(p.get('expires_in')) || 3600) * 1000 - 60000;
+    if (!st.connected) st.auto = true;
+    st.connected = true; st.needsReconnect = false; st.lastError = '';
+    st.justReturned = true;
+  } else {
+    st.token = null; st.exp = 0;                  // a refusal always ends the old sign-in
+    st.pending = null;
+    if (st.silent) st.needsReconnect = true;
+    st.lastError = p.get('error') === 'access_denied' ? 'Permission was not given' : (p.get('error') || 'Sign-in failed');
+    st.justReturned = true;
+  }
+  drvSave(st);
+}
+
+/** After boot: finish what was asked before leaving for Google, or do the daily automatic backup. */
+function driveAfterBoot() {
+  if (CLIENT_MODE) return;
+  const st = drvLoad();
+  if (st.justReturned) {
+    const pending = st.pending, err = st.lastError, silent = st.silent;
+    st.justReturned = false; st.pending = null; st.silent = false;
+    drvSave(st);
+    if (err) {
+      if (silent) setTimeout(() => toast('☁ Google Drive needs to be connected again — Settings → Google Drive backup'), 1200);
+      else setTimeout(() => toast('Google Drive: ' + err), 600);
+      return;
+    }
+    if (!silent && pending === 'backup') setTimeout(() => toast('☁ Google Drive connected'), 300);
+    if (pending === 'backup' || pending === 'auto') return void driveBackup({ auto: pending === 'auto' });
+    if (pending === 'restore') return void openDriveRestore();
+    return;
+  }
+  driveAutoMaybe();
+}
+
+/** Daily backup when the app opens: quiet upload if signed in, else one quick silent Google bounce per day. */
+function driveAutoMaybe() {
+  const st = drvLoad();
+  if (!st.connected || st.auto === false || st.needsReconnect || !navigator.onLine) return;
+  if (!(S.history.length || S.customers.length || S.products.length)) return;
+  if (Date.now() - (st.lastBackupAt || 0) < DRV_DAY) return;
+  if (Date.now() - (st.lastAutoTry || 0) < 6 * 3600 * 1000) return;        // never loops
+  st.lastAutoTry = Date.now(); drvSave(st);
+  if (drvTokenOk(st)) return void driveBackup({ auto: true });
+  setTimeout(() => {
+    if (licLockedState || modalOpen() || scannerOpen() || billHasContent(S.current)) return;   // never interrupt work
+    toast('☁ Daily backup to Google Drive…');
+    setTimeout(() => driveAuth('auto', true), 700);
+  }, 1500);
+}
+
+/** Drive REST call with the saved token. Throws Error('AUTH') when Google wants a new sign-in. */
+async function drvFetch(url, opts = {}) {
+  const st = drvLoad();
+  if (!drvTokenOk(st)) throw new Error('AUTH');
+  const r = await fetch(url, Object.assign({}, opts, { headers: Object.assign({ Authorization: 'Bearer ' + st.token }, opts.headers || {}) }));
+  if (r.status === 401) { const s2 = drvLoad(); s2.token = null; drvSave(s2); throw new Error('AUTH'); }
+  if (!r.ok) {
+    let msg = 'Google Drive error ' + r.status;
+    try { const j = await r.json(); if (j.error && j.error.message) msg = j.error.message; } catch (e) { /* not JSON */ }
+    throw new Error(msg);
+  }
+  return r;
+}
+const drvQ = s => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+async function drvFolderId() {
+  const st = drvLoad();
+  const q = encodeURIComponent(`name='${drvQ(DRIVE.folder)}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+  const found = await (await drvFetch(`${DRIVE.api}/files?q=${q}&fields=files(id)&spaces=drive&pageSize=1`)).json();
+  if (found.files && found.files.length) { st.folderId = found.files[0].id; drvSave(st); return st.folderId; }
+  const made = await (await drvFetch(`${DRIVE.api}/files?fields=id`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: DRIVE.folder, mimeType: 'application/vnd.google-apps.folder' })
+  })).json();
+  st.folderId = made.id; drvSave(st);
+  return made.id;
+}
+
+async function drvListBackups(folderId, size = 100) {
+  const q = encodeURIComponent(`'${drvQ(folderId)}' in parents and trashed=false`);
+  const j = await (await drvFetch(`${DRIVE.api}/files?q=${q}&orderBy=name desc&pageSize=${size}&fields=files(id,name,modifiedTime,size)&spaces=drive`)).json();
+  return (j.files || []).filter(f => /^swiftbill-backup-.*\.json$/.test(f.name));
+}
+
+const drvDayName = (t = new Date()) =>
+  `swiftbill-backup-${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}.json`;
+
+/** Upload today's backup (overwrites today's file), then keep only the newest 30. */
+async function driveBackup({ auto = false, btn } = {}) {
+  if (drvBusy) return;
+  const st0 = drvLoad();
+  if (!drvTokenOk(st0)) return driveAuth(auto ? 'auto' : 'backup', auto);
+  drvBusy = true;
+  const label = btn && btn.textContent;
+  if (btn) { btn.disabled = true; btn.textContent = 'Backing up…'; }
+  try {
+    const folderId = await drvFolderId();
+    const name = drvDayName();
+    const body = JSON.stringify(S);
+    const today = (await drvListBackups(folderId, 5)).find(f => f.name === name);
+    if (today) {
+      await drvFetch(`${DRIVE.upload}/files/${today.id}?uploadType=media&fields=id`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body
+      });
+    } else {
+      const boundary = 'sb' + uid() + uid();
+      const meta = JSON.stringify({ name, parents: [folderId], mimeType: 'application/json' });
+      await drvFetch(`${DRIVE.upload}/files?uploadType=multipart&fields=id`, {
+        method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + boundary },
+        body: `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n` +
+              `--${boundary}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${boundary}--`
+      });
+    }
+    const all = await drvListBackups(folderId, 100);
+    for (const f of all.slice(DRIVE.keep)) {
+      try { await drvFetch(`${DRIVE.api}/files/${f.id}`, { method: 'DELETE' }); } catch (e) { /* try again next time */ }
+    }
+    const st = drvLoad();
+    st.lastBackupAt = Date.now(); st.lastBackupName = name; st.lastError = ''; st.needsReconnect = false;
+    drvSave(st);
+    toast(`☁ Backed up to Google Drive (${(body.length / 1024).toFixed(0)} KB)`);
+  } catch (e) {
+    if (e.message === 'AUTH') { drvBusy = false; return driveAuth(auto ? 'auto' : 'backup', auto); }
+    const st = drvLoad(); st.lastError = e.message; drvSave(st);
+    toast('Google Drive backup failed: ' + e.message);
+  } finally {
+    drvBusy = false;
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+    if ($('sDrv')) driveSettingsUI();
+  }
+}
+
+/** Pick a backup from Drive and restore it (replaces this phone's data, like Restore Backup). */
+async function openDriveRestore() {
+  if (!drvTokenOk(drvLoad())) return driveAuth('restore', false);
+  openModal({
+    title: 'Restore from Google Drive',
+    back: openMenu,
+    body: `<p class="muted" style="font-size:13px;margin:0 0 10px">Choose a backup. It replaces the data on this phone.</p><div id="drList"><div class="empty">Loading backups…</div></div>`,
+    onMount: async () => {
+      try {
+        const files = await drvListBackups(await drvFolderId(), DRIVE.keep);
+        if (!$('drList')) return;
+        $('drList').innerHTML = files.length ? files.map(f => `
+          <div class="row" data-df="${esc(f.id)}" role="button" tabindex="0">
+            <div class="avatar">☁</div>
+            <div class="row-main"><div class="row-t">${esc(f.name.replace(/^swiftbill-backup-|\.json$/g, ''))}</div>
+              <div class="row-s">Saved ${esc(fmtDate(Date.parse(f.modifiedTime)))} · ${(num(f.size) / 1024).toFixed(0)} KB</div></div>
+            <button type="button" class="btn sm indigo">Restore</button>
+          </div>`).join('') : '<div class="empty">No backups in Google Drive yet.<br>Tap <b>Backup now</b> in Settings.</div>';
+        $('drList').addEventListener('click', e => {
+          const row = e.target.closest('[data-df]');
+          const f = row && files.find(x => x.id === row.dataset.df);
+          if (!f) return;
+          confirmDialog('Restore this backup?',
+            `Data on this phone is replaced with the backup from <b>${esc(fmtDate(Date.parse(f.modifiedTime)))}</b>. Tip: tap <b>Backup now</b> first if this phone has newer bills.`,
+            'Restore', () => driveRestoreFile(f), 'primary');
+        });
+      } catch (e) {
+        if (e.message === 'AUTH') return driveAuth('restore', false);
+        if ($('drList')) $('drList').innerHTML = `<div class="empty">Could not read Google Drive: ${esc(e.message)}</div>`;
+      }
+    }
+  });
+}
+
+async function driveRestoreFile(f) {
+  try {
+    toast('Downloading backup…');
+    const data = await (await drvFetch(`${DRIVE.api}/files/${f.id}?alt=media`)).json();
+    if (!data || !Array.isArray(data.customers) || !Array.isArray(data.history)) throw new Error('This file is not a SwiftBill backup');
+    localStorage.setItem(LS_KEY, JSON.stringify(data));
+    load(); save(); render();
+    toast(`✅ Restored: ${data.customers.length} customers/vendors, ${data.history.length} bills`);
+  } catch (e) {
+    if (e.message === 'AUTH') return driveAuth('restore', false);
+    toast('Restore failed: ' + e.message);
+  }
+}
+
+async function driveDisconnect() {
+  const st = drvLoad();
+  if (st.token) { try { await fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(st.token), { method: 'POST' }); } catch (e) { /* offline: token expires anyway */ } }
+  drvSave({});
+  toast('Google Drive disconnected. Backups already in Drive stay there.');
+  driveSettingsUI();
+}
+
+/** Settings → GOOGLE DRIVE BACKUP section. */
+function driveSettingsUI() {
+  const line = $('sDrv'), box = $('sDrvBtns');
+  if (!line || !box) return;
+  const st = drvLoad();
+  if (!st.connected) {
+    line.innerHTML = 'Not connected — backups are only on this phone. Connect once and SwiftBill saves a copy to <b>your</b> Google Drive every day.';
+    box.innerHTML = '<button type="button" class="btn grow primary" id="dConnect">☁ Connect Google Drive</button>';
+    $('dConnect').onclick = () => driveAuth('backup', false);
+    return;
+  }
+  const last = st.lastBackupAt ? `last backup ${fmtDate(st.lastBackupAt)}` : 'no backup yet';
+  line.innerHTML = (st.needsReconnect ? '⚠ <b>Connect again</b> to keep daily backups · ' : '✅ Connected · ') + esc(last) +
+    (st.lastError && !st.needsReconnect ? ` · <span class="recv">${esc(st.lastError)}</span>` : '');
+  box.innerHTML = `
+    <button type="button" class="btn grow primary" id="dNow">☁ Backup now</button>
+    <button type="button" class="btn grow" id="dRestore">⤓ Restore from Drive</button>
+    <button type="button" class="chip ${st.auto === false ? '' : 'on'}" id="dAuto">Daily auto backup: ${st.auto === false ? 'OFF' : 'ON'}</button>
+    <button type="button" class="chip" id="dOff">Disconnect</button>`;
+  $('dNow').onclick = e => (st.needsReconnect ? driveAuth('backup', false) : driveBackup({ btn: e.currentTarget }));
+  $('dRestore').onclick = () => openDriveRestore();
+  $('dAuto').onclick = () => { const s = drvLoad(); s.auto = s.auto === false; drvSave(s); driveSettingsUI(); };
+  $('dOff').onclick = () => confirmDialog('Disconnect Google Drive?',
+    'Daily backups stop on this phone. Backups already saved in your Google Drive are not deleted.', 'Disconnect', () => driveDisconnect().then(openMenu), 'danger');
+}
+
+/* =====================================================================
    13. E-INVOICE LINKS (zero server)
    The whole invoice is packed into the URL hash:  index.html#inv=<token>
      token = <flag><base64url data>.<checksum>
@@ -6683,6 +6957,7 @@ window.addEventListener('hashchange', () => {
 /* =====================================================================
    15. BOOT
    ===================================================================== */
+driveHandleRedirect();                 // coming back from Google's Drive permission page
 if (location.hash.startsWith('#inv=')) {
   bootClientView();                    // customer opened a shared e-invoice link
 } else {
@@ -6690,6 +6965,7 @@ if (location.hash.startsWith('#inv=')) {
   save();
   render();
   licenseGate();                       // activation / licence check (off until a licence server is set)
+  driveAfterBoot();                    // Google Drive: finish a pending backup/restore or the daily backup
   // Bills live only on this device: ask the browser not to clear them when storage runs low
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 }
