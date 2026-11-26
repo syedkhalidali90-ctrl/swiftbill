@@ -8,7 +8,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <title>SwiftBill POS</title>
 <!-- Installable app (PWA / Android APK via PWABuilder) -->
-<link rel="manifest" href="manifest.json" />
+<script>
+  /* Customers opening an e-invoice link (#inv=) must not be offered "Install app":
+     the installable-app manifest is attached only for the shop app itself. */
+  if (!/^#inv=/.test(location.hash)) {
+    var mf = document.createElement("link"); mf.rel = "manifest"; mf.href = "manifest.json";
+    document.head.appendChild(mf);
+  }
+</script>
 <link rel="icon" type="image/png" href="icon-192.png" />
 <link rel="apple-touch-icon" href="icon-192.png" />
 <!--
@@ -806,6 +813,139 @@
     #printArea .inv-sec { page-break-after: avoid; break-after: avoid; }
     #printArea thead { display: table-header-group; }
   }
+
+  /* ===== Products POS page ===== */
+  .sheet.pos-sheet { height: 92dvh; }
+  @media (min-width: 640px) { .sheet.pos-sheet { height: 88vh; } }
+  .pos-bar { display: flex; gap: 8px; align-items: flex-start; }
+  .pos-bar .search { flex: 1; min-width: 0; }
+  .pmode {
+    flex: none; display: flex; padding: 3px; height: 44px; border-radius: 12px;
+    background: var(--card); border: 1px solid var(--line);
+  }
+  .pmode button { padding: 0 10px; border-radius: 9px; font-size: 11px; font-weight: 800; letter-spacing: .06em; color: var(--muted); }
+  .pmode button.on { background: var(--g2); color: #fff; }
+  .pmode button.on.scrap { background: var(--amber); }
+  .pos-cats { flex-wrap: nowrap; overflow-x: auto; margin: 0 0 12px; padding-bottom: 2px; scrollbar-width: none; }
+  .pos-cats::-webkit-scrollbar { display: none; }
+  .pos-cats .chip { flex: none; }
+  .pos-cats .chip i { font-style: normal; opacity: .7; margin-left: 4px; }
+  .pos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+  .pt {
+    position: relative; min-height: 96px; padding: 9px 10px 8px; border-radius: 14px; background: #fff;
+    border: 1px solid var(--line); border-top: 4px solid var(--c, var(--g3));
+    display: flex; flex-direction: column; gap: 2px; cursor: pointer; user-select: none;
+    -webkit-user-select: none; -webkit-tap-highlight-color: transparent; transition: transform .08s ease-out;
+  }
+  .pt:active, .pt.hit { transform: scale(.95); background: var(--g-soft); }
+  .pt.in { border-color: var(--g3); border-top-color: var(--c, var(--g3)); background: #f0fdf4; }
+  .pt-name {
+    font-weight: 800; font-size: 13px; line-height: 1.25; padding-right: 22px; word-break: break-word;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .pt-cat { font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pt-rate { margin-top: auto; padding-right: 26px; font-weight: 900; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .pt-rate.none { color: var(--amber); font-size: 11.5px; font-weight: 800; }
+  .pt-ed { position: absolute; top: 3px; right: 3px; width: 30px; height: 30px; border-radius: 8px; color: var(--muted); font-size: 15px; }
+  .pt-ed:active { background: var(--card); }
+  .pt-qty {
+    position: absolute; right: 7px; bottom: 7px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px;
+    background: var(--ind); color: #fff; font-size: 12px; font-weight: 900; display: grid; place-items: center;
+  }
+  .pt-qty.scrap { background: var(--amber); }
+  .pos-sum { font-size: 12px; font-weight: 700; opacity: .9; margin-left: 4px; }
+  .cat-pick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+  .btn.full { flex: 1 1 100%; }
+  #licRoot { position: fixed; inset: 0; z-index: 100; background: linear-gradient(160deg, #14532d, #166534 55%, #0f172a);
+    display: flex; align-items: center; justify-content: center; padding: 18px; overflow-y: auto; }
+  body.lic-locked { overflow: hidden; }
+  .lic-card { width: 100%; max-width: 420px; background: #fff; border-radius: 22px; padding: 22px 18px 14px; text-align: center;
+    box-shadow: 0 20px 50px rgba(0,0,0,.35); margin: auto; }
+  .lic-ico { font-size: 42px; line-height: 1; }
+  .lic-card h1 { font-size: 20px; font-weight: 900; margin: 10px 0 6px; color: var(--ink); }
+  .lic-card > p { font-size: 13.5px; color: var(--muted); line-height: 1.5; margin: 0 0 14px; }
+  .lic-card .lic-note { background: var(--ind-soft); color: var(--ind); border-radius: 10px; padding: 8px 10px; font-weight: 700; }
+  .lic-form { text-align: left; }
+  .lic-form .field input { width: 100%; }
+  .lic-err { color: var(--red); font-size: 13px; font-weight: 700; min-height: 18px; margin: -4px 0 8px; }
+  .btn.lic-wide { width: 100%; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; text-decoration: none; }
+  .lic-code { border: 2px dashed var(--line); border-radius: 14px; padding: 10px; margin-bottom: 12px; }
+  .lic-code span { display: block; font-size: 10px; font-weight: 800; letter-spacing: .1em; color: var(--muted); }
+  .lic-code b { font-size: 26px; letter-spacing: .12em; font-variant-numeric: tabular-nums; }
+  .lic-foot { font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .pos-scan { flex: none; width: 48px; height: 44px; padding: 0; font-size: 20px; }
+  .bc-row { display: flex; gap: 6px; align-items: center; }
+  .bc-row input { flex: 1; min-width: 0; }
+  .bc-row .btn.sm { height: 46px; }
+  .hold-btn.scan-main { flex: none; width: 46px; padding: 0; justify-content: center; }
+  .hold-btn.scan-main svg { width: 22px; height: 22px; margin: 0; }
+  #scanRoot { position: fixed; inset: 0; z-index: 90; background: #000; color: #fff; display: flex; flex-direction: column; }
+  .scan-top { display: flex; align-items: center; gap: 8px; padding: 12px 14px; padding-top: max(12px, env(safe-area-inset-top)); }
+  .scan-title { flex: 1; font-weight: 900; font-size: 16px; }
+  .scan-btn { width: 40px; height: 40px; border-radius: 12px; background: rgba(255,255,255,.15); color: #fff; font-size: 18px; font-weight: 800; }
+  .scan-view { position: relative; flex: 1; overflow: hidden; }
+  .scan-view video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .scan-frame { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+  .scan-frame i { width: min(78vw, 420px); height: min(34vw, 190px); border: 3px solid #4ade80; border-radius: 16px;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,.45); position: relative; overflow: hidden; }
+  .scan-frame i::after { content: ''; position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; background: #ef4444; box-shadow: 0 0 8px #ef4444;
+    animation: scanline 1.6s ease-in-out infinite; }
+  @keyframes scanline { 0%,100% { transform: translateY(-60px); } 50% { transform: translateY(60px); } }
+  .scan-bottom { background: #fff; color: var(--ink); padding: 12px 14px; padding-bottom: max(12px, env(safe-area-inset-bottom));
+    border-radius: 18px 18px 0 0; display: flex; flex-direction: column; gap: 10px; }
+  .scan-status { font-size: 14px; line-height: 1.45; min-height: 40px; }
+  .scan-manual { display: flex; gap: 8px; }
+  .scan-manual input { flex: 1; min-width: 0; height: 42px; border: 1px solid var(--line); border-radius: 10px; padding: 0 10px; font-size: 15px; outline: 0; background: var(--card); }
+  .lbl-prev { margin-top: 8px; }
+  .lbl-prev .lbl { max-width: 300px; margin: 0 auto; border: 1px dashed var(--line); border-radius: 10px; }
+  .lbl { text-align: center; padding: 8px 6px 6px; color: #000; background: #fff; }
+  .lbl-shop { font-size: 10px; font-weight: 700; letter-spacing: .04em; }
+  .lbl-name { font-size: 14px; font-weight: 900; line-height: 1.2; margin: 2px 0; word-break: break-word; }
+  .lbl-price { font-size: 18px; font-weight: 900; }
+  .lbl-bc svg { display: block; width: 100%; max-width: 280px; height: 58px; margin: 4px auto 0; }
+  .lbl-code { font-size: 12px; font-weight: 700; letter-spacing: .12em; font-variant-numeric: tabular-nums; }
+  #printArea .lbls .lbl { padding: calc(6 * var(--u)) calc(4 * var(--u)); border-bottom: 1px dashed #000; page-break-inside: avoid; break-inside: avoid; }
+  #printArea .lbls .lbl-shop { font-size: calc(10 * var(--u)); }
+  #printArea .lbls .lbl-name { font-size: calc(15 * var(--u)); }
+  #printArea .lbls .lbl-price { font-size: calc(20 * var(--u)); }
+  #printArea .lbls .lbl-bc svg { width: 100%; max-width: none; height: calc(64 * var(--u)); }
+  #printArea .lbls .lbl-code { font-size: calc(13 * var(--u)); }
+  .avatar.ven { background: #fef3c7; color: #92400e; }
+  .party-tabs button { font-size: 12px; letter-spacing: .04em; }
+  .kind-seg { margin-bottom: 0; }
+  .pos-cats .chip.low { border-color: #fecaca; background: var(--red-soft); color: var(--red); }
+  .pos-cats .chip.low.on { background: var(--red); border-color: var(--red); color: #fff; }
+  .stk { font-size: 11px; font-weight: 800; color: var(--g2); }
+  .stk.low { color: var(--amber); }
+  .stk.out { color: var(--red); }
+  .pt.low { box-shadow: inset 0 0 0 1px #fcd34d; }
+  .pt.out { box-shadow: inset 0 0 0 1px #fca5a5; }
+  #productsBtn { position: relative; }
+  #lowDot {
+    position: absolute; top: -6px; right: -6px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px;
+    background: var(--red); color: #fff; font-size: 11px; font-weight: 900; display: grid; place-items: center;
+    border: 2px solid var(--g1); line-height: 1;
+  }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .two > .field { min-width: 0; }
+  .two .field input { width: 100%; min-width: 0; }
+  .sheet-b > .hint { font-size: 12px; color: var(--muted); line-height: 1.45; }
+  .field select {
+    height: 46px; border: 1px solid var(--line); border-radius: 12px; padding: 0 10px; outline: 0;
+    font-size: 16px; background: var(--card); color: var(--ink);
+  }
+  .ord-row { cursor: default; }
+  .ord-row.is-low { border-color: #fcd34d; background: #fffbeb; }
+  .ord-qty {
+    flex: none; width: 74px; height: 42px; border: 1px solid var(--line); border-radius: 10px; padding: 0 8px;
+    font-size: 17px; font-weight: 800; text-align: right; outline: 0; background: #fff;
+  }
+  .ord-qty:focus { border-color: var(--ind); }
+  .ord-t { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0 10px; }
+  .ord-t th { font-size: 10px; letter-spacing: .06em; color: var(--muted); text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  .ord-t td { padding: 8px 4px; border-bottom: 1px solid var(--line); }
+  .ord-t th:nth-child(n+3), .ord-t td:nth-child(n+3) { text-align: right; font-variant-numeric: tabular-nums; }
+  .ord-t tfoot td { font-weight: 900; border-bottom: 0; }
 </style>
 </head>
 <body>
@@ -848,6 +988,10 @@
         </div>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg>
       </button>
+      <button class="icon-btn" id="productsBtn" title="Products" aria-label="Products">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></svg>
+        <span id="lowDot" class="hidden" aria-hidden="true"></span>
+      </button>
       <button class="icon-btn" id="khataBtn" title="Customer Khata" aria-label="Customer Khata">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       </button>
@@ -881,6 +1025,9 @@
     <div class="note-row">
       <input id="noteInput" type="text" placeholder="Item name / note (optional)" autocomplete="off" enterkeyhint="done" />
       <div class="suggest hidden" id="suggestBox" role="listbox" aria-label="Saved products"></div>
+      <button class="hold-btn scan-main" id="scanBtn" title="Scan barcode to bill" aria-label="Scan barcode">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M8 8v8M11 8v8M14 8v8M17 8v8"/></svg>
+      </button>
       <button class="hold-btn names-btn" id="namesBtn" title="Saved item names: search, add, edit, delete" aria-label="Saved item names">
         <svg viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="5" width="16" height="2.4" rx="1.2"/><rect x="4" y="10.8" width="16" height="2.4" rx="1.2"/><rect x="4" y="16.6" width="10" height="2.4" rx="1.2"/></svg>
         NAMES
@@ -1384,7 +1531,11 @@ function defaultState() {
     held: [],        // parked open bills
     history: [],     // finalized bills, newest first
     customers: [],   // { id, name, phone, balance, ledger[], createdAt }
-    products: [],    // catalog: { key, name, rate, type, uses, updatedAt }
+    products: [],    // catalog: { key, name, rate, type, uses, updatedAt, category? }
+    categories: [],  // product category names (Products page)
+    orders: [],      // purchase orders to vendors, newest first
+    nextOrderNo: 1,  // PO-0001, PO-0002…
+    nextBarcodeSeq: 0, // generated in-store barcodes 20xxxxxxxxxxC
     nextReceiptNo: 1,   // Khata deposit receipts: R-0001, R-0002…
     shopWhatsApp: '',   // feedback from customers is sent here
     countryCode: '92',  // for local numbers like 03001234567
@@ -1415,6 +1566,8 @@ function load() {
   if (!Array.isArray(S.history)) S.history = [];
   if (!Array.isArray(S.customers)) S.customers = [];
   if (!Array.isArray(S.products)) S.products = [];
+  if (!Array.isArray(S.categories)) S.categories = [];
+  if (!Array.isArray(S.orders)) S.orders = [];
   S.customers.forEach(c => { if (!Array.isArray(c.ledger)) c.ledger = []; c.balance = num(c.balance); });
   if (!S.current || !Array.isArray(S.current.items)) S.current = newBill();
   // v1 → v2: each line now carries its own type (SALE / SCRAP)
@@ -1507,6 +1660,11 @@ function newBill() {
 }
 
 const getCustomer = id => (id ? S.customers.find(c => c.id === id) : null) || null;
+const isVendor = c => !!c && c.kind === 'VENDOR';
+/** 'Customer' / 'Vendor' wording for Khata screens, slips and statements. */
+const pw = c => (isVendor(c) ? 'Vendor' : 'Customer');
+const pwl = c => pw(c).toLowerCase();
+const pwU = c => pw(c).toUpperCase();
 const lineTotal = it => round2(num(it.rate) * num(it.qty));
 const isScrap = it => it.type === 'SCRAP';
 /** Signed line amount: scrap lines are negative. */
@@ -1558,6 +1716,7 @@ function recalcCustomer(c) {
    ===================================================================== */
 function render() {
   refreshProductDatalist();
+  renderStockBadge();
   renderHeld();
   renderHeader();
   renderItems();
@@ -1954,12 +2113,14 @@ function completeBill() {
     recalcCustomer(cust);
   }
 
+  rec.stock = applyBillStock(rec.items);   // [[productId, qty]] taken out of stock (undefined = none)
   S.history.unshift(rec);
   S.current = newBill();
   calc.expr = '';
   $('noteInput').value = '';
   save(); render();
   showReceipt(rec);
+  lowStockAlert(rec.stock);
 }
 
 /**
@@ -1978,6 +2139,7 @@ function reopenBill(rec) {
       const idx = S.history.indexOf(rec);
       if (idx < 0) return toast('Bill not found');
       S.history.splice(idx, 1);
+      restoreBillStock(rec);   // its sold quantities go back to stock until it is finalized again
       if (c) {
         c.ledger = c.ledger.filter(e => e.billNo !== rec.no);
         recalcCustomer(c);
@@ -2085,33 +2247,44 @@ function numberPrompt(title, initial, hint, onOk, allowPercent) {
    ===================================================================== */
 
 /**
- * Customer list.
- * mode 'pick'   → tapping a row assigns customer to current bill
+ * Customer / vendor list (both live in S.customers; vendors have kind: 'VENDOR').
+ * mode 'pick'   → tapping a row assigns the person to the current bill
  * mode 'manage' → tapping a row opens their Khata
+ * tab  'CUSTOMER' | 'VENDOR' (remembered while the app is open)
  */
-function openCustomers(mode = 'manage', afterPick) {
-  const totalRecv = S.customers.reduce((s, c) => s + (c.balance > 0 ? c.balance : 0), 0);
-  const totalPay = S.customers.reduce((s, c) => s + (c.balance < 0 ? -c.balance : 0), 0);
+let partyTab = 'CUSTOMER';
+function openCustomers(mode = 'manage', afterPick, tab) {
+  if (tab) partyTab = tab;
+  const vend = partyTab === 'VENDOR';
+  const people = S.customers.filter(c => isVendor(c) === vend);
+  const nCust = S.customers.filter(c => !isVendor(c)).length, nVend = S.customers.length - nCust;
+  const totalRecv = people.reduce((s, c) => s + (c.balance > 0 ? c.balance : 0), 0);
+  const totalPay = people.reduce((s, c) => s + (c.balance < 0 ? -c.balance : 0), 0);
+  const word = vend ? 'Vendor' : 'Customer';
   openModal({
-    title: mode === 'pick' ? 'Select Customer' : 'Customer Khata',
+    title: mode === 'pick' ? 'Select Customer' : 'Khata',
     body: `
+      <div class="seg party-tabs" role="tablist" aria-label="Customers or vendors">
+        <button type="button" data-ptab="CUSTOMER" class="${vend ? '' : 'on'}" role="tab" aria-selected="${!vend}">CUSTOMERS (${nCust})</button>
+        <button type="button" data-ptab="VENDOR" class="${vend ? 'on' : ''}" role="tab" aria-selected="${vend}">VENDORS (${nVend})</button>
+      </div>
       ${mode === 'manage' ? `
       <div class="stats">
-        <div class="stat"><div class="stat-l">TOTAL RECEIVABLE</div><div class="stat-v recv">${fmt(totalRecv)}</div></div>
-        <div class="stat"><div class="stat-l">TOTAL PAYABLE</div><div class="stat-v pay">${fmt(totalPay)}</div></div>
+        <div class="stat"><div class="stat-l">${vend ? 'VENDORS OWE YOU' : 'TOTAL RECEIVABLE'}</div><div class="stat-v recv">${fmt(totalRecv)}</div></div>
+        <div class="stat"><div class="stat-l">${vend ? 'YOU OWE VENDORS' : 'TOTAL PAYABLE'}</div><div class="stat-v pay">${fmt(totalPay)}</div></div>
       </div>` : ''}
       <input class="search" id="cSearch" type="search" placeholder="Search name or phone…" autocomplete="off" />
       <div id="cList"></div>`,
-    footer: `<button class="btn grow indigo" id="cAdd">+ New Customer</button>`,
+    footer: `<button class="btn grow indigo" id="cAdd">+ New ${word}</button>`,
     onMount: () => {
       const draw = () => {
         const q = $('cSearch').value.trim().toLowerCase();
-        const list = S.customers
+        const list = people
           .filter(c => !q || c.name.toLowerCase().includes(q) || (c.phone || '').includes(q))
           .sort((a, b) => a.name.localeCompare(b.name));
         const curId = S.current.customerId;
         let h = '';
-        if (mode === 'pick' && !q) {
+        if (mode === 'pick' && !q && !vend) {
           h += `<button class="row ${!curId ? 'sel' : ''}" data-pick="">
                   <div class="avatar">W</div>
                   <div class="row-main"><div class="row-t">Walking Customer</div><div class="row-s">Cash sale, no Khata</div></div>
@@ -2119,7 +2292,7 @@ function openCustomers(mode = 'manage', afterPick) {
         }
         h += list.map(c => `
           <div class="row ${c.id === curId && mode === 'pick' ? 'sel' : ''}" data-row="${c.id}" role="button" tabindex="0">
-            <div class="avatar">${esc(c.name.charAt(0).toUpperCase())}</div>
+            <div class="avatar ${vend ? 'ven' : ''}">${esc(c.name.charAt(0).toUpperCase())}</div>
             <div class="row-main">
               <div class="row-t">${esc(c.name)}</div>
               <div class="row-s">${esc(c.phone || 'No phone')} · ${c.ledger.length} entries</div>
@@ -2130,13 +2303,17 @@ function openCustomers(mode = 'manage', afterPick) {
             </div>
             ${mode === 'pick' ? `<button class="btn sm" data-khata="${c.id}">Khata</button>` : `<button class="btn sm" data-stmt="${c.id}">Statement</button>`}
           </div>`).join('');
-        if (!list.length && (q || mode === 'manage')) {
-          h += `<div class="empty">${q ? 'No customer matches “' + esc(q) + '”' : 'No customers yet.<br>Tap <b>+ New Customer</b> to add one.'}</div>`;
+        if (!list.length && (q || mode === 'manage' || vend)) {
+          h += `<div class="empty">${q ? 'No ' + word.toLowerCase() + ' matches “' + esc(q) + '”'
+            : `No ${word.toLowerCase()}s yet.<br>Tap <b>+ New ${word}</b> to add one.`}</div>`;
         }
         $('cList').innerHTML = h;
       };
       draw();
       $('cSearch').addEventListener('input', draw);
+      document.querySelectorAll('[data-ptab]').forEach(b => b.onclick = () => {
+        if (b.dataset.ptab !== partyTab) openCustomers(mode, afterPick, b.dataset.ptab);
+      });
       $('cList').addEventListener('click', e => {
         const st = e.target.closest('[data-stmt]');
         if (st) return openStatement(st.dataset.stmt, () => openCustomers(mode, afterPick));
@@ -2152,7 +2329,7 @@ function openCustomers(mode = 'manage', afterPick) {
       $('cAdd').onclick = () => openCustomerForm(null, id => {
         if (mode === 'pick') pickCustomer(id, afterPick);
         else openKhata(id, () => openCustomers('manage'));
-      }, () => openCustomers(mode, afterPick));
+      }, () => openCustomers(mode, afterPick), partyTab);
     }
   });
 }
@@ -2161,24 +2338,53 @@ function pickCustomer(id, afterPick) {
   S.current.customerId = id || null;
   save(); renderHeader(); renderHeld();
   closeModal();
-  toast(id ? 'Customer: ' + getCustomer(id).name : 'Walking Customer selected');
+  toast(id ? (isVendor(getCustomer(id)) ? 'Vendor: ' : 'Customer: ') + getCustomer(id).name : 'Walking Customer selected');
   if (id && afterPick) afterPick();
 }
 
-/** Add / edit customer form. */
-function openCustomerForm(id, onSaved, onBack) {
+/** Add / edit customer or vendor. kind0: 'CUSTOMER' | 'VENDOR' preset for a new person. */
+function openCustomerForm(id, onSaved, onBack, kind0) {
   const c = getCustomer(id);
+  let kind = c ? (isVendor(c) ? 'VENDOR' : 'CUSTOMER') : (kind0 === 'VENDOR' ? 'VENDOR' : 'CUSTOMER');
+  const W = () => (kind === 'VENDOR' ? 'Vendor' : 'Customer');
   openModal({
-    title: c ? 'Edit Customer' : 'New Customer',
+    title: c ? 'Edit ' + W() : 'New ' + W(),
     back: onBack,
     body: `
-      <div class="field"><label>NAME *</label><input id="fName" value="${esc(c ? c.name : '')}" placeholder="Customer name" autocomplete="off" /></div>
-      <div class="field"><label>PHONE</label><input id="fPhone" type="tel" value="${esc(c ? c.phone : '')}" placeholder="03xx-xxxxxxx" autocomplete="off" /></div>
+      <div class="field"><label>TYPE</label>
+        <div class="seg kind-seg" id="fKind" role="radiogroup" aria-label="Customer or vendor">
+          <button type="button" data-kind="CUSTOMER" role="radio">CUSTOMER</button>
+          <button type="button" data-kind="VENDOR" role="radio">VENDOR / SUPPLIER</button>
+        </div>
+        <div class="hint" id="fKindHint"></div></div>
+      <div class="field"><label>NAME *</label><input id="fName" value="${esc(c ? c.name : '')}" placeholder="Name" autocomplete="off" /></div>
+      <div class="field"><label id="fPhoneL">PHONE</label><input id="fPhone" type="tel" value="${esc(c ? c.phone : '')}" placeholder="03xx-xxxxxxx" autocomplete="off" /></div>
       ${c ? '' : `<div class="field"><label>OPENING BALANCE</label>
         <input id="fOpen" type="text" inputmode="decimal" placeholder="0" autocomplete="off" />
-        <div class="hint">Positive = customer owes you. Negative (e.g. -500) = you owe the customer.</div></div>`}`,
+        <div class="hint" id="fOpenHint"></div></div>`}`,
     footer: `<button class="btn grow" id="fCancel">Cancel</button><button class="btn grow primary" id="fSave">Save</button>`,
     onMount: () => {
+      const drawKind = () => {
+        document.querySelectorAll('[data-kind]').forEach(b => {
+          b.classList.toggle('on', b.dataset.kind === kind);
+          b.setAttribute('aria-checked', String(b.dataset.kind === kind));
+        });
+        const h2 = document.querySelector('.sheet-h h2');
+        if (h2) h2.textContent = (c ? 'Edit ' : 'New ') + W();
+        $('fName').placeholder = kind === 'VENDOR' ? 'Supplier / company name' : 'Customer name';
+        $('fPhoneL').textContent = kind === 'VENDOR' ? 'WHATSAPP NUMBER (orders are sent here)' : 'PHONE';
+        $('fKindHint').textContent = kind === 'VENDOR'
+          ? 'Vendors supply your stock. Their Khata shows what you owe them; orders go to them on WhatsApp.'
+          : 'Customers buy from you. Their Khata shows what they owe you.';
+        if ($('fOpenHint')) $('fOpenHint').textContent = kind === 'VENDOR'
+          ? 'Negative (e.g. -5000) = you owe the vendor. Positive = vendor owes you (advance paid).'
+          : 'Positive = customer owes you. Negative (e.g. -500) = you owe the customer.';
+      };
+      drawKind();
+      $('fKind').addEventListener('click', e => {
+        const b = e.target.closest('[data-kind]');
+        if (b) { kind = b.dataset.kind; drawKind(); }
+      });
       setTimeout(() => $('fName').focus(), 50);
       $('fCancel').onclick = onBack || closeModal;
       $('fSave').onclick = () => {
@@ -2186,24 +2392,88 @@ function openCustomerForm(id, onSaved, onBack) {
         const phone = $('fPhone').value.trim();
         if (!name) return toast('Name is required');
         const dup = S.customers.find(x => x.name.toLowerCase() === name.toLowerCase() && x.id !== id);
-        if (dup) return toast('A customer with this name already exists');
+        if (dup) return toast(`A ${isVendor(dup) ? 'vendor' : 'customer'} with this name already exists`);
+        const setKind = p => {
+          if (kind === 'VENDOR') p.kind = 'VENDOR';
+          else {
+            delete p.kind;
+            S.products.forEach(pr => { if (pr.vendorId === p.id) delete pr.vendorId; });   // no longer a supplier
+          }
+        };
         if (c) {
-          c.name = name; c.phone = phone;
+          c.name = name; c.phone = phone; setKind(c);
           save(); render();
-          toast('Customer updated');
+          toast(W() + ' updated');
           onSaved && onSaved(c.id);
         } else {
           const open = round2(num($('fOpen').value));
           const nc = { id: uid(), name, phone, balance: open, ledger: [], createdAt: Date.now() };
+          setKind(nc);
           if (open !== 0) nc.ledger.push({ id: uid(), date: Date.now(), type: 'OPENING', billNo: null, total: 0, paid: 0, delta: open, balance: open, note: 'Opening balance' });
           S.customers.push(nc);
           save();
-          toast('Customer added');
+          toast(W() + ' added');
           onSaved && onSaved(nc.id);
         }
       };
     }
   });
+}
+
+/** Vendor Khata: goods bought on credit → you owe the vendor more. */
+function openPurchaseEntry(vendorId, onBack, preset = {}) {
+  const v = getCustomer(vendorId);
+  if (!v) return toast('Vendor not found');
+  openModal({
+    title: 'Purchase on credit · ' + v.name,
+    back: onBack,
+    body: `
+      <div class="stats">
+        <div class="stat"><div class="stat-l">PREVIOUS BALANCE</div><div class="stat-v sm" id="puPrev"></div></div>
+        <div class="stat"><div class="stat-l">AFTER THIS PURCHASE</div><div class="stat-v sm" id="puAfter"></div></div>
+      </div>
+      <div class="field"><label>VENDOR BILL AMOUNT</label>
+        <input id="puAmt" class="big-input" type="text" inputmode="decimal" placeholder="0" autocomplete="off" value="${preset.amount ? esc(preset.amount) : ''}" />
+        <div class="hint">The value of goods received. Pay the vendor later with “− Pay Vendor”.</div></div>
+      <div class="field"><label>BILL NO. / NOTE (OPTIONAL)</label>
+        <input id="puNote" maxlength="120" autocomplete="off" placeholder="e.g. Vendor bill 4471" value="${esc(preset.note || '')}" /></div>`,
+    footer: `<button class="btn grow" id="puCancel">Cancel</button><button class="btn grow indigo" id="puSave">Save to Khata</button>`,
+    onMount: () => {
+      const amtEl = $('puAmt');
+      const update = () => {
+        $('puPrev').textContent = fmtBalVendor(v.balance);
+        $('puAfter').textContent = fmtBalVendor(round2(v.balance - round2(Math.abs(num(amtEl.value)))));
+      };
+      update();
+      amtEl.addEventListener('input', update);
+      setTimeout(() => amtEl.focus(), 50);
+      $('puCancel').onclick = onBack || closeModal;
+      $('puSave').onclick = () => {
+        const amt = round2(Math.abs(num(amtEl.value)));
+        if (amt <= 0) { amtEl.focus(); return toast('Enter the bill amount'); }
+        addPurchaseEntry(v, amt, cleanName($('puNote').value), preset.orderNo);
+        save(); renderHeader();
+        toast('Purchase saved · ' + fmt(amt));
+        (onBack || closeModal)();
+      };
+    }
+  });
+}
+
+function addPurchaseEntry(v, amt, note, orderNo) {
+  v.ledger.push({
+    id: uid(), date: Date.now(), type: 'PURCHASE', billNo: null, total: amt, paid: 0,
+    delta: -amt, balance: 0, orderNo: orderNo || null,
+    note: note || (orderNo ? 'Goods received · ' + orderNo : 'Goods purchased')
+  });
+  recalcCustomer(v);
+}
+
+/** Balance as seen from the shop, worded for a vendor. */
+function fmtBalVendor(b) {
+  b = round2(b);
+  if (b === 0) return 'Rs. 0 (clear)';
+  return fmt(Math.abs(b)) + (b < 0 ? ' (you owe)' : ' (advance)');
 }
 
 /** Customer ledger (Khata) view. */
@@ -2217,6 +2487,7 @@ function openKhata(id, onBack) {
     if (e.type === 'SCRAP') return '<span class="tag scrap">SCRAP</span>';
     if (e.type === 'PAYMENT IN') return '<span class="tag pay">RECEIVED</span>';
     if (e.type === 'PAYMENT OUT') return '<span class="tag pay">PAID OUT</span>';
+    if (e.type === 'PURCHASE') return '<span class="tag credit">PURCHASE</span>';
     return `<span class="tag partial">${esc(e.type)}</span>`;
   };
   openModal({
@@ -2224,13 +2495,14 @@ function openKhata(id, onBack) {
     back: onBack,
     body: `
       <div class="bal-card ${c.balance > 0 ? 'recv' : ''}">
-        <div class="bal-l">${c.balance > 0 ? 'CUSTOMER OWES YOU' : c.balance < 0 ? 'YOU OWE CUSTOMER' : 'ACCOUNT CLEAR'}</div>
+        <div class="bal-l">${c.balance > 0 ? pwU(c) + ' OWES YOU' : c.balance < 0 ? 'YOU OWE ' + pwU(c) : 'ACCOUNT CLEAR'}</div>
         <div class="bal-v">${fmt(Math.abs(c.balance))}</div>
         <div class="bal-s">${esc(c.phone || 'No phone')} · ${c.ledger.length} entries</div>
       </div>
       <div class="btn-row">
         <button class="btn sm primary" id="kRecv">+ Deposit / Receive</button>
-        <button class="btn sm" id="kPay">− Pay Customer</button>
+        ${isVendor(c) ? '<button class="btn sm indigo" id="kBuy">+ Purchase (credit)</button>' : ''}
+        <button class="btn sm" id="kPay">− Pay ${pw(c)}</button>
         <button class="btn sm indigo" id="kStmt">📄 Statement</button>
         <button class="btn sm indigo" id="kUse">Use on Bill</button>
         <button class="btn sm" id="kEdit">Edit</button>
@@ -2252,16 +2524,18 @@ function openKhata(id, onBack) {
       const reopen = () => openKhata(id, onBack);
       $('kRecv').onclick = () => openDeposit(c.id, 'IN', reopen);
       $('kPay').onclick = () => openDeposit(c.id, 'OUT', reopen);
+      if ($('kBuy')) $('kBuy').onclick = () => openPurchaseEntry(c.id, reopen);
       $('kStmt').onclick = () => openStatement(c.id, reopen);
       $('kUse').onclick = () => pickCustomer(c.id);
       $('kEdit').onclick = () => openCustomerForm(c.id, reopen, reopen);
-      $('kDel').onclick = () => confirmDialog('Delete customer?',
+      $('kDel').onclick = () => confirmDialog(`Delete ${pwl(c)}?`,
         `<b>${esc(c.name)}</b> and their Khata (${fmtBal(c.balance)}) will be deleted. Past bills stay in history.`,
         'Delete', () => {
           S.customers = S.customers.filter(x => x.id !== c.id);
+          S.products.forEach(p => { if (p.vendorId === c.id) delete p.vendorId; });
           [S.current, ...S.held].forEach(b => { if (b.customerId === c.id) b.customerId = null; });
           save(); render();
-          toast('Customer deleted');
+          toast(pw(c) + ' deleted');
           openCustomers('manage');
         }, 'danger');
       $('mBody').addEventListener('click', e => {
@@ -2687,6 +2961,12 @@ function openMenu() {
         <button class="btn grow indigo" id="sExport">⬇ Download Backup</button>
         <button class="btn grow" id="sImport">⬆ Restore Backup</button>
       </div>
+      <p class="muted" id="sLic" style="font-size:12px;margin:0 0 10px"></p>
+      <div class="sec-title" style="margin-top:4px">DEMO DATA (FOR TESTING)</div>
+      <div class="btn-row">
+        <button class="btn grow" id="sDemo">🧪 Load demo data</button>
+        ${hasDemo() ? '<button class="btn grow danger" id="sDemoDel">Remove demo data</button>' : ''}
+      </div>
       <button class="btn danger" style="width:100%" id="sReset">Erase All Data</button>`,
     footer: `<button class="btn grow primary" id="sSave">Save</button>`,
     onMount: () => {
@@ -2723,6 +3003,12 @@ function openMenu() {
         sendBluetoothPrint(btTestJob(btJobOpts(bt)), 'Test print');
       };
       $('sProducts').onclick = openProducts;
+      licSettingsLine().then(t => { if ($('sLic')) $('sLic').textContent = t; });
+      $('sDemo').onclick = () => hasDemo() ? toast('Demo data is already loaded') : confirmDialog('Load demo data?',
+        'Adds <b>10 products</b>, <b>10 vendors</b>, <b>10 customers</b>, bills, Khata entries and 2 vendor orders so you can try every screen.' +
+        ' Your own data is not changed. Remove it later with <b>Remove demo data</b>.', 'Load demo data', () => { loadDemoData(); openMenu(); });
+      if ($('sDemoDel')) $('sDemoDel').onclick = () => confirmDialog('Remove demo data?',
+        'All demo products, vendors, customers, bills and orders are removed. Your own data stays.', 'Remove', () => { removeDemoData(); openMenu(); }, 'danger');
       $('sExport').onclick = exportBackup;
       $('sImport').onclick = () => $('importFile').click();
       $('sReset').onclick = () => confirmDialog('Erase ALL data?',
@@ -2794,6 +3080,7 @@ $('heldBar').addEventListener('click', e => {
 
 // Header controls
 $('custBtn').onclick = () => openCustomers('pick');
+$('productsBtn').onclick = () => openProductPOS();
 $('khataBtn').onclick = () => openCustomers('manage');
 $('historyBtn').onclick = openHistory;
 $('menuBtn').onclick = openMenu;
@@ -2876,6 +3163,7 @@ $('dispMode').onclick = () => (S.current.mode === 'SCRAP' ? $('modeSales') : $('
 
 // Bottom actions
 $('holdBtn').onclick = holdCurrent;
+$('scanBtn').onclick = () => { $('suggestBox').classList.add('hidden'); scanToBill(); };
 $('partialBtn').onclick = partialBill;
 $('chargesBtn').onclick = () => editAdjustment('charges');
 $('discountBtn').onclick = () => editAdjustment('discount');
@@ -3185,6 +3473,1657 @@ function textPrompt(title, initial, hint, onOk, onBack) {
       setTimeout(() => { inp.focus(); inp.select(); }, 50);
     }
   });
+}
+
+/* =====================================================================
+   12b. PRODUCTS PAGE (POS grid), PRODUCT FORM & CATEGORIES
+   Uses the same S.products list as the catalog and saved names, plus an
+   optional `category`. Products typed on the calculator keep appearing here.
+   Tapping a product adds it to the bill on screen (same product and rate →
+   qty + 1), in the bill's current SALES / SCRAP mode. Bills keep their own
+   copy of name and rate, so editing or deleting a product never changes bills.
+   ===================================================================== */
+const NO_CAT = '~none~';                      // filter value for products without a category
+const posView = { q: '', cat: '' };           // search / category remembered while the app is open
+const CAT_COLORS = ['#16a34a', '#4f46e5', '#d97706', '#0891b2', '#db2777', '#7c3aed', '#ea580c', '#0d9488', '#65a30d', '#be123c'];
+
+const catOf = p => cleanName(p && p.category);
+const sameText = (a, b) => cleanName(a).toLowerCase() === cleanName(b).toLowerCase();
+
+function catColor(cat) {
+  if (!cat) return '';
+  let h = 0;
+  for (const ch of cat.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return CAT_COLORS[h % CAT_COLORS.length];
+}
+
+/** All category names (saved list + any used by a product), A→Z, without duplicates. */
+function allCategories() {
+  const map = new Map();
+  S.categories.concat(S.products.map(catOf)).forEach(c => {
+    c = cleanName(c);
+    if (c && !map.has(c.toLowerCase())) map.set(c.toLowerCase(), c);
+  });
+  return [...map.values()].sort((a, b) => a.localeCompare(b));
+}
+
+/** Returns the saved spelling of a category, adding it to the list if it is new. */
+function ensureCategory(raw) {
+  const name = cleanName(raw).slice(0, 40);
+  if (!name) return '';
+  const found = allCategories().find(c => sameText(c, name));
+  if (found) {
+    if (!S.categories.some(c => sameText(c, found))) S.categories.push(found);
+    return found;
+  }
+  S.categories.push(name);
+  return name;
+}
+
+/** Quantity of this product already on the bill in the current mode. */
+function qtyOnBill(p) {
+  const type = S.current.mode === 'SCRAP' ? 'SCRAP' : 'SALE';
+  return round2(S.current.items
+    .filter(it => it.type === type && sameText(it.name, p.name))
+    .reduce((s, it) => s + num(it.qty), 0));
+}
+
+/** POS tap: add one of this product to the current bill. Returns the new quantity of that line. */
+function addProductToBill(p) {
+  const type = S.current.mode === 'SCRAP' ? 'SCRAP' : 'SALE';
+  const rate = round2(num(p.rate));
+  const line = S.current.items.find(it => it.type === type && sameText(it.name, p.name) && round2(num(it.rate)) === rate);
+  if (line) line.qty = round2(num(line.qty) + 1);
+  else S.current.items.push({ id: uid(), name: p.name, rate, qty: 1, type });
+  p.uses = (p.uses || 0) + 1;
+  save();
+  render();
+  return line ? line.qty : 1;
+}
+
+function openProductPOS() {
+  if (posView.cat && posView.cat !== NO_CAT && posView.cat !== LOW_CAT && !allCategories().some(c => c === posView.cat)) posView.cat = '';
+  if (posView.cat === LOW_CAT && !lowProducts().length) posView.cat = '';
+  openModal({
+    title: 'Products',
+    body: `
+      <div class="pos-bar">
+        <input class="search" id="ppSearch" type="search" placeholder="Search name, category, barcode…" autocomplete="off" enterkeyhint="search" value="${esc(posView.q)}" />
+        <button type="button" class="btn indigo pos-scan" id="ppScan" aria-label="Scan barcode to bill">📷</button>
+        <div class="pmode" role="group" aria-label="Add as">
+          <button type="button" data-pmode="SALES">SALE</button>
+          <button type="button" data-pmode="SCRAP">SCRAP</button>
+        </div>
+      </div>
+      <div class="chips pos-cats" id="ppCats" role="tablist" aria-label="Categories"></div>
+      <div class="pos-grid" id="ppGrid"></div>`,
+    footerClass: 'wrap',
+    footer: `
+      <button class="btn f2" id="ppNew">+ New</button>
+      <button class="btn f2" id="ppCatBtn">Categories</button>
+      <button class="btn f2" id="ppVenBtn">Vendors</button>
+      <button class="btn f2" id="ppLblBtn">🏷 Labels</button>
+      <button class="btn primary full" id="ppDone">Done<span class="pos-sum" id="ppSum"></span></button>`,
+    onMount: sheet => {
+      sheet.classList.add('pos-sheet');
+      const search = $('ppSearch');
+
+      const drawMode = () => document.querySelectorAll('[data-pmode]').forEach(b => {
+        const on = (S.current.mode === 'SCRAP' ? 'SCRAP' : 'SALES') === b.dataset.pmode;
+        b.classList.toggle('on', on);
+        b.classList.toggle('scrap', on && b.dataset.pmode === 'SCRAP');
+      });
+
+      const drawSum = () => {
+        const t = calcTotals(S.current);
+        const n = S.current.items.length;
+        $('ppSum').textContent = n ? ` · ${n} item${n > 1 ? 's' : ''} · ${fmt(t.net)}` : '';
+      };
+
+      const visible = () => {
+        const q = cleanName(search.value).toLowerCase();
+        return S.products
+          .filter(p => !posView.cat || (posView.cat === LOW_CAT ? isLow(p) : posView.cat === NO_CAT ? !catOf(p) : sameText(catOf(p), posView.cat)))
+          .filter(p => !q || p.key.includes(q) || catOf(p).toLowerCase().includes(q) || (p.barcode || '').includes(q))
+          .sort((a, b) => a.name.localeCompare(b.name));
+      };
+
+      const drawCats = () => {
+        const cats = allCategories();
+        const count = c => S.products.filter(p => sameText(catOf(p), c)).length;
+        const none = S.products.filter(p => !catOf(p)).length;
+        const chip = (val, label, n) =>
+          `<button type="button" class="chip ${posView.cat === val ? 'on' : ''}" data-cat="${esc(val)}" role="tab"
+             aria-selected="${posView.cat === val}">${esc(label)}<i>${n}</i></button>`;
+        const low = lowProducts().length;
+        $('ppCats').innerHTML = cats.length || low
+          ? chip('', 'All', S.products.length) + (low ? chip(LOW_CAT, '⚠ Low stock', low).replace('class="chip', 'class="chip low') : '') +
+            cats.map(c => chip(c, c, count(c))).join('') + (none && cats.length ? chip(NO_CAT, 'No category', none) : '')
+          : '';
+      };
+
+      const tileHTML = p => {
+        const cat = catOf(p), q = qtyOnBill(p);
+        return `
+          <div class="pt ${q ? 'in' : ''} ${isTracked(p) ? (p.stock <= 0 ? 'out' : isLow(p) ? 'low' : '') : ''}" data-key="${esc(p.key)}" role="button" tabindex="0"
+               style="${cat ? '--c:' + catColor(cat) : ''}" aria-label="Add ${esc(p.name)}">
+            <div class="pt-name">${esc(p.name)}</div>
+            <div class="pt-cat">${esc(cat || (p.type === 'SCRAP' ? 'Scrap' : ' '))}</div>
+            ${stockLabel(p)}
+            <div class="pt-rate ${p.rate ? '' : 'none'}">${p.rate ? fmt(p.rate) : 'Set rate'}</div>
+            <button type="button" class="pt-ed" data-edit="${esc(p.key)}" aria-label="Edit ${esc(p.name)}">✎</button>
+            ${q ? `<span class="pt-qty ${S.current.mode === 'SCRAP' ? 'scrap' : ''}">${q}</span>` : ''}
+          </div>`;
+      };
+
+      const drawGrid = () => {
+        const list = visible();
+        const q = cleanName(search.value);
+        $('ppGrid').innerHTML = list.length ? list.map(tileHTML).join('') : `
+          <div class="empty">
+            ${q ? `No product matches “${esc(q)}”.<br><button type="button" class="btn sm indigo" id="ppNewQ" style="margin-top:10px">+ Add “${esc(q)}”</button>`
+              : posView.cat === LOW_CAT ? '✅ No product is low on stock.'
+              : S.products.length ? 'No products in this category.'
+              : '<div class="big">📦</div><b>No products yet</b><br>Tap <b>+ New</b> to add one.<br><span style="font-size:12px">Items you add on the calculator with a name also appear here.</span>'}
+          </div>`;
+        if ($('ppNewQ')) $('ppNewQ').onclick = () => openProductForm(null, { name: q, category: posView.cat === NO_CAT ? '' : posView.cat });
+      };
+
+      const drawAll = () => { drawMode(); drawCats(); drawGrid(); drawSum(); };
+      drawAll();
+
+      search.addEventListener('input', () => { posView.q = search.value; drawGrid(); });
+      search.addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const hit = productByBarcode(search.value);
+        if (hit && hit.rate) {
+          const qty = addProductToBill(hit);
+          search.value = ''; posView.q = ''; drawGrid(); drawSum();
+          return toast(`Scanned: ${hit.name} × ${qty}`);
+        }
+        search.blur();
+      });
+
+      document.querySelectorAll('[data-pmode]').forEach(b => b.onclick = () => {
+        S.current.mode = b.dataset.pmode;
+        save(); renderHeader(); renderDisplay();
+        drawMode(); drawGrid();
+        toast(b.dataset.pmode === 'SCRAP' ? 'SCRAP: products are added as deductions' : 'SALE: products are added as sale items');
+      });
+
+      $('ppCats').addEventListener('click', e => {
+        const c = e.target.closest('[data-cat]');
+        if (!c) return;
+        posView.cat = c.dataset.cat;
+        drawCats(); drawGrid();
+        $('mBody').scrollTop = 0;
+      });
+
+      $('ppGrid').addEventListener('click', e => {
+        const ed = e.target.closest('[data-edit]');
+        const tile = e.target.closest('[data-key]');
+        const p = tile && S.products.find(x => x.key === tile.dataset.key);
+        if (!p) return;
+        if (ed) return openProductForm(p);
+        if (!p.rate) return openProductForm(p, { needRate: true });
+        vibrate();
+        const qty = addProductToBill(p);
+        drawGrid(); drawSum();
+        const again = $('ppGrid').querySelector(`[data-key="${CSS.escape(p.key)}"]`);
+        if (again) { again.classList.add('hit'); setTimeout(() => again.classList.remove('hit'), 120); }
+        if (S.current.mode !== 'SCRAP' && isTracked(p) && qtyOnBill(p) > p.stock) toast(`⚠ ${p.name}: only ${Math.max(0, p.stock)} in stock`);
+        else toast(`${S.current.mode === 'SCRAP' ? 'Scrap' : 'Added'}: ${p.name} × ${qty}`);
+      });
+      $('ppGrid').addEventListener('keydown', e => {
+        if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.pt')) { e.preventDefault(); e.target.click(); }
+      });
+
+      $('ppNew').onclick = () => openProductForm(null, { name: cleanName(search.value), category: posView.cat === NO_CAT ? '' : posView.cat });
+      $('ppCatBtn').onclick = () => openCategories();
+      $('ppVenBtn').onclick = () => openVendors();
+      $('ppLblBtn').onclick = () => openLabels(() => openProductPOS());
+      $('ppScan').onclick = scanToBill;
+      $('ppGrid').addEventListener('sb-refresh', () => { drawGrid(); drawSum(); });
+      $('ppDone').onclick = closeModal;
+    }
+  });
+}
+
+/**
+ * Add / edit product.
+ * opts.name / opts.category / opts.vendorId prefill a new product; opts.needRate: product tapped on the grid
+ * without a rate → after saving the rate it is added to the bill. opts.back: screen to return to
+ * (default: Products page). opts.draft: values typed before "+ New vendor…" was chosen.
+ */
+function openProductForm(p, opts = {}) {
+  const isNew = !p;
+  const back = opts.back || (() => openProductPOS());
+  const cats = allCategories();
+  const d = opts.draft || {
+    name: isNew ? opts.name || '' : p.name,
+    barcode: isNew ? cleanCode(opts.barcode) : p.barcode || '',
+    rate: !isNew && p.rate ? String(round2(p.rate)) : '',
+    cat: isNew ? cleanName(opts.category) : catOf(p),
+    vendorId: isNew ? opts.vendorId || '' : p.vendorId || '',
+    stock: !isNew && isTracked(p) ? String(p.stock) : '',
+    min: !isNew && isTracked(p) && num(p.minStock) ? String(p.minStock) : ''
+  };
+  const vendors = allVendors().sort((a, b) => a.name.localeCompare(b.name));
+  openModal({
+    title: isNew ? 'New Product' : opts.needRate ? 'Set rate' : 'Edit Product',
+    back,
+    body: `
+      <div class="field"><label>PRODUCT NAME *</label>
+        <input id="pfName" maxlength="80" autocomplete="off" value="${esc(d.name)}" placeholder="e.g. Steel Bolt 2 inch" /></div>
+      <div class="field"><label>BARCODE</label>
+        <div class="bc-row">
+          <input id="pfBc" maxlength="48" autocomplete="off" enterkeyhint="next" value="${esc(d.barcode)}" placeholder="Scan, type, or tap Auto" />
+          <button type="button" class="btn sm indigo" id="pfScan">📷 Scan</button>
+          <button type="button" class="btn sm" id="pfAuto">Auto</button>
+        </div>
+        <div class="hint">Scan the barcode printed on the product. No barcode? Tap <b>Auto</b>, save, then print a label.</div></div>
+      <div class="field"><label>RATE (Rs.)</label>
+        <input id="pfRate" type="text" inputmode="decimal" autocomplete="off" value="${esc(d.rate)}" placeholder="0" />
+        <div class="hint">Price used when you tap the product. You can still change it on the bill.</div></div>
+      <div class="field"><label>CATEGORY</label>
+        <input id="pfCat" maxlength="40" autocomplete="off" list="pfCatList" value="${esc(d.cat)}" placeholder="Type a new one or tap below (optional)" />
+        <datalist id="pfCatList">${cats.map(c => `<option value="${esc(c)}"></option>`).join('')}</datalist>
+        ${cats.length ? `<div class="cat-pick">${cats.map(c =>
+          `<button type="button" class="chip ${sameText(c, d.cat) ? 'on' : ''}" data-pc="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : ''}
+      </div>
+      <div class="field"><label>VENDOR (SUPPLIER)</label>
+        <select id="pfVendor">
+          <option value="">No vendor</option>
+          ${vendors.map(v => `<option value="${esc(v.id)}" ${v.id === d.vendorId ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}
+          <option value="${NEW_VENDOR}">+ New vendor…</option>
+        </select></div>
+      <div class="two">
+        <div class="field"><label>STOCK IN HAND</label>
+          <input id="pfStock" type="text" inputmode="decimal" autocomplete="off" value="${esc(d.stock)}" placeholder="Not counted" /></div>
+        <div class="field"><label>LOW ALERT AT</label>
+          <input id="pfMin" type="text" inputmode="decimal" autocomplete="off" value="${esc(d.min)}" placeholder="0" /></div>
+      </div>
+      <div class="hint" style="margin:-4px 0 12px">Leave stock empty if you don't count this product. Stock goes down when a bill is
+        finalized and up when a vendor order is received. Products at or below the alert level show as <b>Low stock</b>.</div>
+      ${isNew ? '' : `<p class="muted" style="font-size:12px;margin:0">Used ${p.uses || 0}× · changes here never alter saved bills.</p>`}`,
+    footer: `
+      ${isNew ? '<button class="btn grow" id="pfCancel">Cancel</button>' : '<button class="btn danger" id="pfDel">Delete</button>'}
+      ${!isNew && !opts.needRate ? '<button class="btn" id="pfLabel">🏷 Label</button>' : ''}
+      <button class="btn grow primary" id="pfSave">${opts.needRate ? 'Save & add to bill' : 'Save'}</button>`,
+    onMount: () => {
+      const bcEl = $('pfBc');
+      const nameEl = $('pfName'), rateEl = $('pfRate'), catEl = $('pfCat'), venEl = $('pfVendor'), stockEl = $('pfStock'), minEl = $('pfMin');
+      if (!opts.draft) setTimeout(() => (opts.needRate ? rateEl : nameEl).focus(), 50);
+      const draft = () => ({ name: nameEl.value, barcode: bcEl.value, rate: rateEl.value, cat: catEl.value,
+        vendorId: venEl.value === NEW_VENDOR ? '' : venEl.value, stock: stockEl.value, min: minEl.value });
+
+      const syncChips = () => document.querySelectorAll('[data-pc]').forEach(b => b.classList.toggle('on', sameText(b.dataset.pc, catEl.value)));
+      catEl.addEventListener('input', syncChips);
+      const bcTaken = code => { const o = productByBarcode(code); return o && o !== p ? o : null; };
+      $('pfScan').onclick = () => openScanner({
+        title: 'Scan product barcode',
+        onCode: code => {
+          const o = bcTaken(code);
+          bcEl.value = code;
+          toast(o ? `⚠ ${code} is already used by “${o.name}”` : 'Barcode: ' + code);
+          if (!o && !cleanName(nameEl.value)) nameEl.focus();
+        }
+      });
+      $('pfAuto').onclick = () => {
+        bcEl.value = generateBarcode();
+        toast('New barcode: ' + bcEl.value);
+      };
+      document.querySelectorAll('[data-pc]').forEach(b => b.onclick = () => {
+        catEl.value = sameText(catEl.value, b.dataset.pc) ? '' : b.dataset.pc;   // tap again to clear
+        syncChips();
+      });
+      venEl.addEventListener('change', () => {
+        if (venEl.value !== NEW_VENDOR) return;
+        const dr = draft();
+        openVendorForm(null,
+          id => openProductForm(p, Object.assign({}, opts, { draft: Object.assign(dr, { vendorId: id }) })),
+          () => openProductForm(p, Object.assign({}, opts, { draft: dr })));
+      });
+
+      const badNum = v => v && isNaN(parseFloat(v.replace(/,/g, '')));
+      const submit = () => {
+        const name = cleanName(nameEl.value);
+        const err = libraryNameError(name, isNew ? null : p.key);
+        if (err) { toast(err); return nameEl.focus(); }
+        const rawRate = rateEl.value.trim(), rawStock = stockEl.value.trim(), rawMin = minEl.value.trim();
+        if (badNum(rawRate)) { toast('Please enter a valid rate'); return rateEl.focus(); }
+        const rate = round2(num(rawRate));
+        if (rate < 0) { toast('Rate cannot be negative'); return rateEl.focus(); }
+        if (opts.needRate && rate <= 0) { toast('Enter the rate to add this product'); return rateEl.focus(); }
+        if (badNum(rawStock)) { toast('Please enter a valid stock quantity'); return stockEl.focus(); }
+        if (badNum(rawMin) || num(rawMin) < 0) { toast('Please enter a valid alert level'); return minEl.focus(); }
+        if (rawMin && !rawStock) { toast('Enter the stock in hand to use a low-stock alert'); return stockEl.focus(); }
+        const code = cleanCode(bcEl.value);
+        const taken = code && bcTaken(code);
+        if (taken) { toast(`Barcode already used by “${taken.name}”`); return bcEl.focus(); }
+        const category = ensureCategory(catEl.value);
+        let prod = p;
+        if (isNew) {
+          prod = { id: uid(), key: name.toLowerCase(), name, rate, type: 'SALE', uses: 0, updatedAt: Date.now() };
+          S.products.push(prod);
+        } else {
+          prod.name = name; prod.key = name.toLowerCase(); prod.rate = rate; prod.updatedAt = Date.now();
+        }
+        if (category) prod.category = category; else delete prod.category;
+        if (code) prod.barcode = code; else delete prod.barcode;
+        if (getVendor(venEl.value)) prod.vendorId = venEl.value; else delete prod.vendorId;
+        if (rawStock) { prod.stock = round2(num(rawStock)); prod.minStock = round2(num(rawMin)); }
+        else { delete prod.stock; delete prod.minStock; }
+        save(); refreshProductDatalist(); renderStockBadge();
+        if (opts.needRate) {
+          const qty = addProductToBill(prod);
+          toast(`Added: ${prod.name} × ${qty}`);
+        } else {
+          toast(isNew ? 'Product added' : 'Product updated');
+        }
+        back();
+      };
+      $('pfSave').onclick = submit;
+      if ($('pfLabel')) $('pfLabel').onclick = () => {
+        if (!p.barcode && !cleanCode(bcEl.value)) { p.barcode = generateBarcode(); save(); toast('New barcode: ' + p.barcode); }
+        openLabels(() => openProductForm(p, opts), [{ key: p.key, copies: 1 }]);
+      };
+      // A handheld scanner types the code + Enter: move on instead of saving the form
+      bcEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); (cleanName(nameEl.value) ? rateEl : nameEl).focus(); } });
+      [nameEl, rateEl, catEl, stockEl, minEl].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }));
+      if ($('pfCancel')) $('pfCancel').onclick = back;
+      if ($('pfDel')) $('pfDel').onclick = () => confirmDialog('Delete product?',
+        `<b>${esc(p.name)}</b> will be removed from your products. Bills and vendor orders that already use it are not changed.`, 'Delete', () => {
+          S.products = S.products.filter(x => x !== p);
+          save(); refreshProductDatalist(); renderStockBadge();
+          toast('Product deleted');
+          back();
+        }, 'danger');
+    }
+  });
+}
+
+/** Category list: add, rename (all its products follow), delete (its products keep working, without a category). */
+function openCategories() {
+  const back = () => openProductPOS();
+  openModal({
+    title: 'Categories',
+    back,
+    body: `
+      <p class="muted" style="font-size:13px;margin:0 0 10px">Group products to find them faster. Renaming or deleting a category never changes bills.</p>
+      <div id="ctList"></div>`,
+    footer: `<button class="btn grow" id="ctBack">Back to products</button><button class="btn grow indigo" id="ctAdd">+ New Category</button>`,
+    onMount: () => {
+      const cats = allCategories();
+      const count = c => S.products.filter(p => sameText(catOf(p), c)).length;
+      $('ctList').innerHTML = cats.length ? cats.map(c => `
+        <div class="row" data-ct="${esc(c)}">
+          <div class="avatar" style="background:${catColor(c)};color:#fff">${esc(c.charAt(0).toUpperCase())}</div>
+          <div class="row-main"><div class="row-t">${esc(c)}</div><div class="row-s">${count(c)} product${count(c) === 1 ? '' : 's'}</div></div>
+          <button type="button" class="del" data-ren="${esc(c)}" aria-label="Rename ${esc(c)}">✎</button>
+          <button type="button" class="del" data-del="${esc(c)}" aria-label="Delete ${esc(c)}">✕</button>
+        </div>`).join('')
+        : `<div class="empty">No categories yet.<br>Tap <b>+ New Category</b>, or type one when you add a product.</div>`;
+
+      $('ctBack').onclick = back;
+      $('ctAdd').onclick = () => textPrompt('New category', '', 'e.g. Crockery, Kitchen, Hardware', v => {
+        const name = cleanName(v);
+        if (name.length < 2) { toast('Enter a category name'); return openCategories(); }
+        if (allCategories().some(c => sameText(c, name))) { toast('That category already exists'); return openCategories(); }
+        ensureCategory(name); save();
+        toast('Category added');
+        openCategories();
+      }, openCategories);
+
+      $('ctList').addEventListener('click', e => {
+        const ren = e.target.closest('[data-ren]'), del = e.target.closest('[data-del]');
+        if (ren) {
+          const old = ren.dataset.ren;
+          return textPrompt('Rename category', old, 'All products in this category move to the new name.', v => {
+            const name = cleanName(v).slice(0, 40);
+            if (name.length < 2) { toast('Enter a category name'); return openCategories(); }
+            if (!sameText(name, old) && allCategories().some(c => sameText(c, name))) { toast('That category already exists'); return openCategories(); }
+            S.categories = S.categories.filter(c => !sameText(c, old)).concat(name);
+            S.products.forEach(p => { if (sameText(catOf(p), old)) p.category = name; });
+            if (sameText(posView.cat, old)) posView.cat = name;
+            save(); toast('Category renamed');
+            openCategories();
+          }, openCategories);
+        }
+        if (del) {
+          const c = del.dataset.del, n = count(c);
+          return confirmDialog('Delete category?',
+            `<b>${esc(c)}</b> will be removed.${n ? ` Its <b>${n}</b> product${n === 1 ? '' : 's'} stay saved, without a category.` : ''}`, 'Delete', () => {
+              S.categories = S.categories.filter(x => !sameText(x, c));
+              S.products.forEach(p => { if (sameText(catOf(p), c)) delete p.category; });
+              if (sameText(posView.cat, c)) posView.cat = '';
+              save(); toast('Category deleted');
+              openCategories();
+            }, 'danger');
+        }
+      });
+    }
+  });
+}
+
+/* =====================================================================
+   12c. VENDORS, STOCK & PURCHASE ORDERS
+   Product fields: vendorId?, stock? (number; missing = not counted), minStock (alert level).
+   Stock goes down when a bill is finalized (SALE lines only; SCRAP lines never touch stock),
+   comes back when that bill is re-opened, and goes up when a vendor order is received.
+   Orders are sent to the vendor as a WhatsApp message; nothing is uploaded.
+   ===================================================================== */
+const LOW_CAT = '~low~';            // Products page filter: low stock
+const NEW_VENDOR = '~new~';         // product form: "+ New vendor…"
+
+const isTracked = p => !!p && typeof p.stock === 'number' && isFinite(p.stock);
+const isLow = p => isTracked(p) && p.stock <= num(p.minStock);
+const lowProducts = () => S.products.filter(isLow);
+const allVendors = () => S.customers.filter(isVendor);
+const getVendor = id => { const c = getCustomer(id); return isVendor(c) ? c : null; };
+const vendorProducts = id => S.products.filter(p => p.vendorId === id);
+const productId = p => p.id || (p.id = uid());          // stable id, survives renames
+const productById = id => S.products.find(p => p.id === id) || null;
+const fmtQty = n => String(round2(num(n)));
+
+function stockLabel(p) {
+  if (!isTracked(p)) return '';
+  if (p.stock <= 0) return '<div class="stk out">Out of stock</div>';
+  if (isLow(p)) return `<div class="stk low">Low · ${fmtQty(p.stock)} left</div>`;
+  return `<div class="stk">Stock ${fmtQty(p.stock)}</div>`;
+}
+
+/** Red number on the header Products button = products at or below their alert level. */
+function renderStockBadge() {
+  const dot = $('lowDot');
+  if (!dot) return;
+  const n = lowProducts().length;
+  dot.textContent = n > 99 ? '99+' : String(n);
+  dot.classList.toggle('hidden', !n);
+  $('productsBtn').title = n ? `Products · ${n} low on stock` : 'Products';
+}
+
+/** FINALIZE: take sold quantities out of stock. Returns [[productId, qty]] kept on the bill record. */
+function applyBillStock(items) {
+  const moved = [];
+  items.forEach(it => {
+    if (it.type === 'SCRAP') return;
+    const p = getProduct(it.name);
+    if (!isTracked(p)) return;
+    const q = round2(num(it.qty));
+    p.stock = round2(p.stock - q);
+    moved.push([productId(p), q]);
+  });
+  return moved.length ? moved : undefined;
+}
+
+/** Re-open: put back exactly what this bill took out (bills saved before stock existed change nothing). */
+function restoreBillStock(rec) {
+  (Array.isArray(rec.stock) ? rec.stock : []).forEach(([id, q]) => {
+    const p = productById(id);
+    if (isTracked(p)) p.stock = round2(p.stock + num(q));
+  });
+}
+
+function lowStockAlert(moved) {
+  if (!moved) return;
+  const low = moved.map(([id]) => productById(id)).filter(isLow);
+  if (!low.length) return;
+  setTimeout(() => toast('⚠ Low stock: ' + low.slice(0, 3).map(p => `${p.name} (${fmtQty(p.stock)})`).join(', ') +
+    (low.length > 3 ? ` +${low.length - 3} more` : '') + ' — order from Products → Vendors'), 600);
+}
+
+/** Order quantity suggested for a low product: back up to twice the alert level (at least 1). */
+function suggestQty(p) {
+  if (!isTracked(p)) return 0;
+  return Math.max(1, Math.ceil(num(p.minStock) * 2 - Math.max(0, p.stock)));
+}
+
+/* ---------- Vendors list ---------- */
+function openVendors() {
+  const pending = S.orders.filter(o => o.status === 'SENT').length;
+  const low = lowProducts();
+  const noVendorLow = low.filter(p => !getVendor(p.vendorId)).length;
+  openModal({
+    title: 'Vendors',
+    back: () => openProductPOS(),
+    body: `
+      <div class="stats">
+        <div class="stat"><div class="stat-l">LOW STOCK ITEMS</div><div class="stat-v ${low.length ? 'recv' : ''}">${low.length}</div></div>
+        <div class="stat"><div class="stat-l">ORDERS NOT RECEIVED</div><div class="stat-v">${pending}</div></div>
+        <div class="stat" style="grid-column:1/-1"><div class="stat-l">YOU OWE VENDORS</div><div class="stat-v pay">${fmt(allVendors().reduce((s, v) => s + (v.balance < 0 ? -v.balance : 0), 0))}</div></div>
+      </div>
+      ${noVendorLow ? `<p class="muted" style="font-size:12px;margin:-4px 0 10px">⚠ ${noVendorLow} low-stock product${noVendorLow > 1 ? 's have' : ' has'} no vendor — set one in the product (✎) to order it.</p>` : ''}
+      <input class="search" id="vSearch" type="search" placeholder="Search vendor or phone…" autocomplete="off" />
+      <div id="vList"></div>`,
+    footer: `<button class="btn grow" id="vOrders">📋 Orders${pending ? ` (${pending})` : ''}</button><button class="btn grow indigo" id="vAdd">+ New Vendor</button>`,
+    onMount: () => {
+      const draw = () => {
+        const q = $('vSearch').value.trim().toLowerCase();
+        const list = allVendors()
+          .filter(v => !q || v.name.toLowerCase().includes(q) || (v.phone || '').includes(q))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        $('vList').innerHTML = list.length ? list.map(v => {
+          const prods = vendorProducts(v.id), nLow = prods.filter(isLow).length;
+          return `
+          <div class="row" data-ven="${esc(v.id)}" role="button" tabindex="0">
+            <div class="avatar">${esc(v.name.charAt(0).toUpperCase())}</div>
+            <div class="row-main">
+              <div class="row-t">${esc(v.name)}</div>
+              <div class="row-s">${esc(v.phone || 'No phone')} · ${prods.length} product${prods.length === 1 ? '' : 's'}</div>
+            </div>
+            <div class="row-r">
+              ${v.balance ? `<div class="amt ${v.balance > 0 ? 'recv' : 'pay'}">${fmt(Math.abs(v.balance))}</div><div class="row-s">${v.balance < 0 ? 'you owe' : 'advance'}</div>` : ''}
+              ${nLow ? `<span class="tag credit">${nLow} low</span>` : ''}
+            </div>
+          </div>`;
+        }).join('') : `<div class="empty">${q ? 'No vendor matches “' + esc(q) + '”' : 'No vendors yet.<br>Tap <b>+ New Vendor</b>, or choose “+ New vendor…” when you add a product.'}</div>`;
+      };
+      draw();
+      $('vSearch').addEventListener('input', draw);
+      $('vList').addEventListener('click', e => {
+        const row = e.target.closest('[data-ven]');
+        if (row) openVendor(row.dataset.ven);
+      });
+      $('vOrders').onclick = () => openOrders(openVendors);
+      $('vAdd').onclick = () => openVendorForm(null, id => openVendor(id), openVendors);
+    }
+  });
+}
+
+/* ---------- Add / edit vendor: the shared customer/vendor form, preset to VENDOR ---------- */
+function openVendorForm(v, onSaved, onBack) {
+  openCustomerForm(v ? v.id : null, onSaved, onBack, 'VENDOR');
+}
+
+/* ---------- One vendor: products, stock, orders ---------- */
+function openVendor(id) {
+  const v = getVendor(id);
+  if (!v) return openVendors();
+  const prods = vendorProducts(id).sort((a, b) => (isLow(b) - isLow(a)) || a.name.localeCompare(b.name));
+  const nLow = prods.filter(isLow).length;
+  const orders = S.orders.filter(o => o.vendorId === id).slice(0, 5);
+  const self = () => openVendor(id);
+  openModal({
+    title: v.name,
+    back: openVendors,
+    body: `
+      <div class="row" style="cursor:default">
+        <div class="avatar">${esc(v.name.charAt(0).toUpperCase())}</div>
+        <div class="row-main"><div class="row-t">${esc(v.name)}</div><div class="row-s">${esc(v.phone || 'No WhatsApp number')} · ${v.balance < 0 ? 'you owe ' + fmt(-v.balance) : v.balance > 0 ? 'advance ' + fmt(v.balance) : 'account clear'}</div></div>
+        <button class="btn sm indigo" id="vdKhata">Khata</button>
+        <button class="btn sm" id="vdEdit">Edit</button>
+      </div>
+      <div class="sec-title">PRODUCTS (${prods.length})${nLow ? ` · <span class="recv">${nLow} LOW</span>` : ''}</div>
+      ${prods.length ? prods.map(p => `
+        <div class="row" data-pk="${esc(p.key)}" role="button" tabindex="0">
+          <div class="row-main">
+            <div class="row-t">${esc(p.name)}</div>
+            <div class="row-s">${p.rate ? fmt(p.rate) : 'No rate'}${catOf(p) ? ' · ' + esc(catOf(p)) : ''}${isTracked(p) ? ' · alert at ' + fmtQty(p.minStock) : ''}</div>
+          </div>
+          <div class="row-r">${stockLabel(p) || '<div class="row-s">Not counted</div>'}</div>
+        </div>`).join('')
+        : '<div class="empty" style="margin:8px 0">No products from this vendor yet.<br>Tap <b>+ Product</b>, or pick this vendor in a product (✎).</div>'}
+      ${orders.length ? `<div class="sec-title">RECENT ORDERS</div>` + orders.map(orderRowHTML).join('') : ''}`,
+    footerClass: 'wrap',
+    footer: `<button class="btn f2" id="vdAddP">+ Product</button>
+             <button class="btn f2" id="vdAll">All orders</button>
+             <button class="btn primary full" id="vdOrder">🛒 Create Order${nLow ? ` · ${nLow} low` : ''}</button>`,
+    onMount: () => {
+      $('vdEdit').onclick = () => openVendorForm(v, () => (getVendor(id) ? self() : openVendors()), self);
+      $('vdKhata').onclick = () => openKhata(id, self);
+      $('vdAddP').onclick = () => openProductForm(null, { vendorId: id, back: self });
+      $('vdAll').onclick = () => openOrders(self, id);
+      $('vdOrder').onclick = () => prods.length ? openOrderForm(id, self) : toast('Add products for this vendor first');
+      $('mBody').addEventListener('click', e => {
+        const pr = e.target.closest('[data-pk]');
+        const p = pr && S.products.find(x => x.key === pr.dataset.pk);
+        if (p) return openProductForm(p, { back: self });
+        const or = e.target.closest('[data-ord]');
+        if (or) openOrder(or.dataset.ord, self);
+      });
+    }
+  });
+}
+
+function orderRowHTML(o) {
+  const qty = o.items.reduce((s, it) => s + num(it.qty), 0);
+  return `
+    <div class="row" data-ord="${esc(o.id)}" role="button" tabindex="0">
+      <div class="row-main">
+        <div class="row-t">${esc(o.no)} · ${esc(o.vendorName)}</div>
+        <div class="row-s">${esc(fmtDate(o.createdAt))} · ${o.items.length} item${o.items.length === 1 ? '' : 's'} · ${fmtQty(qty)} pcs</div>
+      </div>
+      ${o.status === 'RECEIVED' ? '<span class="tag pay">RECEIVED</span>' : '<span class="tag partial">SENT</span>'}
+    </div>`;
+}
+
+/* ---------- Create order (purchase order) ---------- */
+function openOrderForm(vendorId, onBack) {
+  const v = getVendor(vendorId);
+  if (!v) return openVendors();
+  const prods = vendorProducts(vendorId).sort((a, b) => (isLow(b) - isLow(a)) || a.name.localeCompare(b.name));
+  openModal({
+    title: 'Order · ' + v.name,
+    back: onBack,
+    body: `
+      <p class="muted" style="font-size:13px;margin:0 0 10px">Low-stock products are filled in for you. Change any quantity; 0 or empty = not ordered.</p>
+      ${prods.map(p => `
+        <div class="row ord-row ${isLow(p) ? 'is-low' : ''}">
+          <div class="row-main">
+            <div class="row-t">${esc(p.name)}</div>
+            <div class="row-s">${isTracked(p) ? (isLow(p) ? '<span class="recv">' : '<span>') + 'Stock ' + fmtQty(p.stock) + '</span> · alert at ' + fmtQty(p.minStock) : 'Stock not counted'}</div>
+          </div>
+          <input class="ord-qty" data-oq="${esc(productId(p))}" type="text" inputmode="decimal" autocomplete="off"
+                 value="${isLow(p) ? suggestQty(p) : ''}" placeholder="0" aria-label="Order quantity for ${esc(p.name)}" />
+        </div>`).join('')}
+      <div class="field" style="margin-top:6px"><label>NOTE FOR VENDOR (OPTIONAL)</label>
+        <input id="ofNote" maxlength="200" autocomplete="off" placeholder="e.g. Deliver by Saturday" /></div>
+      ${v.phone ? '' : '<p class="muted" style="font-size:12px">This vendor has no WhatsApp number: WhatsApp will ask you to choose the chat.</p>'}`,
+    footer: `<button class="btn grow" id="ofCancel">Cancel</button><button class="btn grow wa" id="ofSend">Send Order on WhatsApp</button>`,
+    onMount: () => {
+      save();   // keeps the product ids created above
+      $('ofCancel').onclick = onBack;
+      $('ofSend').onclick = () => {
+        const items = [];
+        for (const inp of document.querySelectorAll('[data-oq]')) {
+          const raw = inp.value.trim();
+          if (raw && (isNaN(parseFloat(raw.replace(/,/g, ''))) || num(raw) < 0)) { inp.focus(); return toast('Please enter a valid quantity'); }
+          const q = round2(num(raw)), p = productById(inp.dataset.oq);
+          if (q > 0 && p) items.push({ id: p.id, name: p.name, qty: q });
+        }
+        if (!items.length) return toast('Enter a quantity for at least one product');
+        const o = {
+          id: uid(), no: 'PO-' + String(S.nextOrderNo++).padStart(4, '0'),
+          vendorId: v.id, vendorName: v.name, phone: v.phone || '',
+          items, note: cleanName($('ofNote').value), createdAt: Date.now(), status: 'SENT'
+        };
+        S.orders.unshift(o);
+        save();
+        sendOrderWhatsApp(o);
+        openOrder(o.id, onBack);
+      };
+    }
+  });
+}
+
+function orderText(o) {
+  const qty = o.items.reduce((s, it) => s + num(it.qty), 0);
+  return [
+    `Assalam o Alaikum ${o.vendorName},`,
+    `*Purchase Order ${o.no}* from *${S.shopName || 'SWIFTBILL POS'}*`,
+    `Date: ${fmtDate(o.createdAt, false)}`,
+    '',
+    ...o.items.map((it, i) => `${i + 1}. ${it.name} — *${fmtQty(it.qty)}*`),
+    '',
+    `Total: ${o.items.length} item${o.items.length === 1 ? '' : 's'} · ${fmtQty(qty)} pcs`,
+    ...(o.note ? [`Note: ${o.note}`] : []),
+    '',
+    'Please confirm and send the goods. Thank you.'
+  ].join('\n');
+}
+
+function sendOrderWhatsApp(o) {
+  const v = getVendor(o.vendorId);
+  const phone = normalizePhone((v && v.phone) || o.phone);
+  openWhatsApp(phone, orderText(o));   // same link method as deposit slips (works inside the Android app)
+  if (!phone) toast('No vendor WhatsApp number — choose the chat in WhatsApp');
+}
+
+/* ---------- Order detail, receiving ---------- */
+function openOrder(id, onBack) {
+  const o = S.orders.find(x => x.id === id);
+  if (!o) return onBack ? onBack() : openVendors();
+  const self = () => openOrder(id, onBack);
+  const qty = o.items.reduce((s, it) => s + num(it.qty), 0);
+  const got = o.received ? new Map(o.received) : null;
+  openModal({
+    title: 'Order ' + o.no,
+    back: onBack,
+    body: `
+      <div class="row" style="cursor:default">
+        <div class="row-main"><div class="row-t">${esc(o.vendorName)}</div>
+          <div class="row-s">Sent ${esc(fmtDate(o.createdAt))}${o.receivedAt ? ' · received ' + esc(fmtDate(o.receivedAt)) : ''}</div></div>
+        ${o.status === 'RECEIVED' ? '<span class="tag pay">RECEIVED</span>' : '<span class="tag partial">SENT</span>'}
+      </div>
+      <table class="ord-t">
+        <thead><tr><th>#</th><th>PRODUCT</th><th>ORDERED</th>${got ? '<th>RECEIVED</th>' : ''}</tr></thead>
+        <tbody>${o.items.map((it, i) => `<tr><td>${i + 1}</td><td>${esc(it.name)}</td><td>${fmtQty(it.qty)}</td>
+          ${got ? `<td>${fmtQty(got.get(it.id) || 0)}</td>` : ''}</tr>`).join('')}</tbody>
+        <tfoot><tr><td></td><td>${o.items.length} item${o.items.length === 1 ? '' : 's'}</td><td>${fmtQty(qty)}</td>${got ? `<td>${fmtQty([...got.values()].reduce((s, q) => s + num(q), 0))}</td>` : ''}</tr></tfoot>
+      </table>
+      ${o.note ? `<p class="muted" style="font-size:13px">Note: ${esc(o.note)}</p>` : ''}`,
+    footerClass: 'wrap',
+    footer: o.status === 'RECEIVED'
+      ? `<button class="btn grow" id="odBack">Back</button><button class="btn grow wa" id="odSend">Share on WhatsApp</button>`
+      : `<button class="btn danger" id="odDel">Delete</button><button class="btn grow wa" id="odSend">Resend</button>
+         <button class="btn primary full" id="odRecv">📦 Goods received — add to stock</button>`,
+    onMount: () => {
+      $('odSend').onclick = () => sendOrderWhatsApp(o);
+      if ($('odBack')) $('odBack').onclick = onBack || closeModal;
+      if ($('odRecv')) $('odRecv').onclick = () => openReceiveForm(o, self);
+      if ($('odDel')) $('odDel').onclick = () => confirmDialog('Delete order?',
+        `Order <b>${esc(o.no)}</b> will be deleted. Stock is not changed (it was never received).`, 'Delete', () => {
+          S.orders = S.orders.filter(x => x !== o);
+          save(); toast('Order deleted');
+          onBack ? onBack() : openVendors();
+        }, 'danger');
+    }
+  });
+}
+
+/** Confirm what actually arrived (short delivery allowed); adds it to stock. */
+function openReceiveForm(o, onBack) {
+  openModal({
+    title: 'Receive ' + o.no,
+    back: onBack,
+    body: `
+      <p class="muted" style="font-size:13px;margin:0 0 10px">Check the quantities that actually arrived. They are added to stock.</p>
+      ${o.items.map(it => {
+        const p = productById(it.id);
+        return `
+        <div class="row ord-row">
+          <div class="row-main"><div class="row-t">${esc(it.name)}</div>
+            <div class="row-s">Ordered ${fmtQty(it.qty)} · ${p ? (isTracked(p) ? 'stock now ' + fmtQty(p.stock) : 'stock not counted yet') : 'product deleted — stock not changed'}</div></div>
+          <input class="ord-qty" data-rq="${esc(it.id)}" type="text" inputmode="decimal" autocomplete="off" value="${fmtQty(it.qty)}" ${p ? '' : 'disabled'} />
+        </div>`;
+      }).join('')}
+      ${getVendor(o.vendorId) ? `<div class="field" style="margin-top:6px"><label>VENDOR BILL AMOUNT (OPTIONAL)</label>
+        <input id="rfAmt" type="text" inputmode="decimal" autocomplete="off" placeholder="0" />
+        <div class="hint">Filled in → added to ${esc(o.vendorName)}'s Khata as a purchase on credit (you owe them). Leave empty if already paid.</div></div>` : ''}`,
+    footer: `<button class="btn grow" id="rfCancel">Cancel</button><button class="btn grow primary" id="rfOk">Add to stock</button>`,
+    onMount: () => {
+      $('rfCancel').onclick = onBack;
+      $('rfOk').onclick = () => {
+        const rec = [];
+        for (const inp of document.querySelectorAll('[data-rq]')) {
+          if (inp.disabled) continue;
+          const raw = inp.value.trim();
+          if (raw && (isNaN(parseFloat(raw.replace(/,/g, ''))) || num(raw) < 0)) { inp.focus(); return toast('Please enter a valid quantity'); }
+          rec.push([inp.dataset.rq, round2(num(raw))]);
+        }
+        const amtRaw = $('rfAmt') ? $('rfAmt').value.trim() : '';
+        if (amtRaw && (isNaN(parseFloat(amtRaw.replace(/,/g, ''))) || num(amtRaw) < 0)) { $('rfAmt').focus(); return toast('Please enter a valid bill amount'); }
+        if (o.status === 'RECEIVED') return onBack();   // double tap guard
+        rec.forEach(([id, q]) => {
+          const p = productById(id);
+          if (!p || q <= 0) return;
+          if (isTracked(p)) p.stock = round2(p.stock + q);
+          else { p.stock = q; p.minStock = num(p.minStock); }
+        });
+        o.status = 'RECEIVED'; o.receivedAt = Date.now(); o.received = rec;
+        const bill = round2(Math.abs(num(amtRaw))), ven = getVendor(o.vendorId);
+        if (bill > 0 && ven) { addPurchaseEntry(ven, bill, '', o.no); o.billAmount = bill; }
+        save(); renderStockBadge();
+        toast(`${o.no} received — stock updated`);
+        onBack();
+      };
+    }
+  });
+}
+
+/* ---------- All orders ---------- */
+function openOrders(onBack, vendorId) {
+  const self = () => openOrders(onBack, vendorId);
+  const list = S.orders.filter(o => !vendorId || o.vendorId === vendorId);
+  const v = getVendor(vendorId);
+  openModal({
+    title: v ? 'Orders · ' + v.name : 'Vendor Orders',
+    back: onBack,
+    body: list.length ? `
+      ${list.some(o => o.status === 'SENT') ? '<div class="sec-title">NOT RECEIVED YET</div>' + list.filter(o => o.status === 'SENT').map(orderRowHTML).join('') : ''}
+      ${list.some(o => o.status === 'RECEIVED') ? '<div class="sec-title">RECEIVED</div>' + list.filter(o => o.status === 'RECEIVED').slice(0, 100).map(orderRowHTML).join('') : ''}`
+      : '<div class="empty">No orders yet.<br>Open a vendor and tap <b>Create Order</b>.</div>',
+    onMount: () => {
+      $('mBody').addEventListener('click', e => {
+        const or = e.target.closest('[data-ord]');
+        if (or) openOrder(or.dataset.ord, self);
+      });
+    }
+  });
+}
+
+/* =====================================================================
+   12d. BARCODES: scan (camera), auto-generate, labels, scan-to-bill
+   Scanner: the phone's built-in BarcodeDetector (Chrome on Android, powered by
+   Google ML Kit: fast and offline). Browsers without it load ZXing-C++
+   (zxing-wasm, MIT) on demand from vendor/zxing-reader.js + vendor/zxing_reader.wasm.
+   Generated codes: EAN-13 numbers in the in-store range 20xxxxxxxxxxC, printed as
+   Code 128 (readable by every camera and handheld scanner).
+   ===================================================================== */
+const SCAN_FORMATS_NATIVE = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'code_93', 'itf', 'codabar', 'qr_code'];
+const SCAN_FORMATS_ZXING = ['EAN13', 'EAN8', 'UPCA', 'UPCE', 'Code128', 'Code39', 'Code93', 'ITF', 'Codabar', 'QRCode'];
+const ZXING_JS = 'vendor/zxing-reader.js';
+const ZXING_WASM = 'vendor/zxing_reader.wasm';
+
+const cleanCode = s => String(s || '').replace(/[\u0000-\u001f\u007f]/g, '').trim();
+
+/** Same code, ignoring the UPC-A ↔ EAN-13 leading zero. */
+function sameCode(a, b) {
+  a = cleanCode(a); b = cleanCode(b);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const n = s => (/^\d{12,13}$/.test(s) ? s.padStart(13, '0') : s);
+  return n(a) === n(b);
+}
+const productByBarcode = code => (cleanCode(code) ? S.products.find(p => p.barcode && sameCode(p.barcode, code)) || null : null);
+
+function ean13Check(d12) {
+  let s = 0;
+  for (let i = 0; i < 12; i++) s += (+d12[i]) * (i % 2 ? 3 : 1);
+  return String((10 - (s % 10)) % 10);
+}
+
+/** Next free in-store EAN-13 (prefix 20). */
+function generateBarcode() {
+  for (let guard = 0; guard < 100000; guard++) {
+    S.nextBarcodeSeq = (num(S.nextBarcodeSeq) || 0) + 1;
+    const d12 = '20' + String(S.nextBarcodeSeq).padStart(10, '0');
+    const code = d12 + ean13Check(d12);
+    if (!productByBarcode(code)) return code;
+  }
+  return '20' + Date.now().toString().slice(-10) + '0';
+}
+
+/* ---------- Code 128 encoder (sets B and C) ---------- */
+const C128 = ('212222 222122 222221 121223 121322 131222 122213 122312 132212 221213 221312 231212 112232 122132 122231 ' +
+  '113222 123122 123221 223211 221132 221231 213212 223112 312131 311222 321122 321221 312212 322112 322211 212123 ' +
+  '212321 232121 111323 131123 131321 112313 132113 132311 211313 231113 231311 112133 112331 132131 113123 113321 ' +
+  '133121 313121 211331 231131 213113 213311 213131 311123 311321 331121 312113 312311 332111 314111 221411 431111 ' +
+  '111224 111422 121124 121421 141122 141221 112214 112412 122114 122411 142112 142211 241211 221114 413111 241112 ' +
+  '134111 111242 121142 121241 114212 124112 124211 411212 421112 421211 212141 214121 412121 111143 111341 131141 ' +
+  '114113 114311 411113 411311 113141 114131 311141 411131 211412 211214 211232 2331112').split(' ');
+
+/** Symbol values (start … check, without stop) for text; null if a character can't be encoded. */
+function code128Values(text) {
+  text = String(text);
+  if (!text || /[^\x20-\x7e]/.test(text)) return null;
+  const vals = [];
+  const digitsOnly = /^\d+$/.test(text);
+  if (digitsOnly && text.length >= 4) {
+    let i = 0;
+    if (text.length % 2) { vals.push(104, text.charCodeAt(0) - 32, 99); i = 1; }   // Start B, 1 digit, Code C
+    else vals.push(105);                                                            // Start C
+    for (; i < text.length; i += 2) vals.push(+text.substr(i, 2));
+  } else {
+    vals.push(104);
+    for (const ch of text) vals.push(ch.charCodeAt(0) - 32);
+  }
+  let sum = vals[0];
+  for (let i = 1; i < vals.length; i++) sum += vals[i] * i;
+  vals.push(sum % 103);
+  return vals;
+}
+
+/** Bar/space module widths, quiet zones excluded. */
+function code128Widths(text) {
+  const vals = code128Values(text);
+  if (!vals) return null;
+  return vals.map(v => C128[v]).join('') + C128[106];
+}
+
+function code128SVG(text, { module = 2, height = 56, quiet = 10 } = {}) {
+  const w = code128Widths(text);
+  if (!w) return '';
+  let x = quiet * module, rects = '';
+  [...w].forEach((c, i) => {
+    const wd = +c * module;
+    if (i % 2 === 0) rects += `<rect x="${x}" y="0" width="${wd}" height="${height}"/>`;
+    x += wd;
+  });
+  const total = x + quiet * module;
+  return `<svg class="bc-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${height}" width="${total}" height="${height}" preserveAspectRatio="none" shape-rendering="crispEdges" aria-label="Barcode ${esc(text)}"><rect width="${total}" height="${height}" fill="#fff"/><g fill="#000">${rects}</g></svg>`;
+}
+
+/* ---------- Labels ---------- */
+function labelHTML(p) {
+  return `
+    <div class="lbl">
+      <div class="lbl-shop">${esc(S.shopName || 'SWIFTBILL POS')}</div>
+      <div class="lbl-name">${esc(p.name)}</div>
+      ${p.rate ? `<div class="lbl-price">${fmt(p.rate)}</div>` : ''}
+      <div class="lbl-bc">${code128SVG(p.barcode, { module: 2, height: 60 })}</div>
+      <div class="lbl-code">${esc(p.barcode)}</div>
+    </div>`;
+}
+
+/** ESC/POS labels: the printer draws the barcode itself (GS k, CODE128). */
+function labelsEscPos(jobs, opts) {
+  const d = escposDoc(opts), GS = 0x1d, ESC = 0x1b, W = d.W;
+  d.raw(ESC, 0x40, ESC, 0x74, 0);
+  jobs.forEach(({ p, copies }) => {
+    const code = cleanCode(p.barcode);
+    let data;
+    if (/^\d+$/.test(code) && code.length % 2 === 0 && code.length >= 4) {
+      data = [0x7b, 0x43]; for (let i = 0; i < code.length; i += 2) data.push(+code.substr(i, 2));   // {C pairs
+    } else {
+      data = [0x7b, 0x42]; for (const ch of escposAscii(code)) data.push(ch.charCodeAt(0));           // {B text
+    }
+    for (let k = 0; k < copies; k++) {
+      d.align(1);
+      d.wrap(S.shopName || 'SWIFTBILL POS');
+      d.bold(true); d.wrap(p.name); d.bold(false);
+      if (p.rate) { d.size(2, 2); d.line(fmt(p.rate)); d.size(1, 1); }
+      d.raw(GS, 0x68, 70);                       // bar height (dots)
+      d.raw(GS, 0x77, W >= 48 ? 3 : 2);          // module width
+      d.raw(GS, 0x48, 2);                        // digits below the bars
+      d.raw(GS, 0x66, 0);
+      d.raw(GS, 0x6b, 73, data.length, ...data);
+      d.line();
+      d.align(0);
+      d.rule('-');
+    }
+  });
+  d.raw(ESC, 0x64, 3);
+  if (opts && opts.cut) d.raw(GS, 0x56, 0x42, 0);
+  return new Uint8Array(d.bytes);
+}
+
+/**
+ * Print labels: pick products and copies. Products without a barcode get one generated first.
+ * preset: [{ key, copies }]
+ */
+function openLabels(onBack, preset) {
+  const picks = new Map((preset || []).map(x => [x.key, x.copies]));
+  openModal({
+    title: 'Print Barcode Labels',
+    back: onBack,
+    body: `
+      <p class="muted" style="font-size:13px;margin:0 0 10px">Enter how many labels to print for each product. Products without a barcode get one automatically.</p>
+      <input class="search" id="lbSearch" type="search" placeholder="Search product or barcode…" autocomplete="off" />
+      <div id="lbList"></div>
+      <div id="lbPrev" class="lbl-prev"></div>`,
+    footerClass: 'wrap',
+    footer: `${btPrintButtonHTML('lbBt')}${wifiPrintButtonHTML('lbWifi')}
+             <button class="btn primary full" id="lbPrint">🖨 Print labels</button>`,
+    onMount: () => {
+      const all = () => S.products.slice().sort((a, b) => a.name.localeCompare(b.name));
+      const draw = () => {
+        const q = cleanName($('lbSearch').value).toLowerCase();
+        const list = all().filter(p => !q || p.key.includes(q) || (p.barcode || '').includes(q));
+        $('lbList').innerHTML = list.length ? list.map(p => `
+          <div class="row ord-row">
+            <div class="row-main">
+              <div class="row-t">${esc(p.name)}</div>
+              <div class="row-s">${p.barcode ? '▮▯▮ ' + esc(p.barcode) : '<span class="stk low">No barcode yet — one will be made</span>'}${p.rate ? ' · ' + fmt(p.rate) : ''}</div>
+            </div>
+            <input class="ord-qty" data-lc="${esc(p.key)}" type="text" inputmode="numeric" autocomplete="off" placeholder="0" value="${picks.get(p.key) || ''}" aria-label="Labels for ${esc(p.name)}" />
+          </div>`).join('') : '<div class="empty">No products.</div>';
+        preview();
+      };
+      const preview = () => {
+        const first = [...picks.entries()].find(([, n]) => n > 0);
+        const p = first && S.products.find(x => x.key === first[0]);
+        $('lbPrev').innerHTML = p ? `<div class="sec-title">PREVIEW</div>${labelHTML(p.barcode ? p : Object.assign({}, p, { barcode: '2000000000000' }))}` : '';
+      };
+      $('lbList').addEventListener('input', e => {
+        const inp = e.target.closest('[data-lc]');
+        if (!inp) return;
+        const n = Math.min(500, Math.max(0, parseInt(inp.value, 10) || 0));
+        if (n) picks.set(inp.dataset.lc, n); else picks.delete(inp.dataset.lc);
+        preview();
+      });
+      $('lbSearch').addEventListener('input', draw);
+      draw();
+
+      /** Products + copies to print; generates missing barcodes (saved). */
+      const jobs = () => {
+        const out = [];
+        let made = 0;
+        picks.forEach((copies, key) => {
+          const p = S.products.find(x => x.key === key);
+          if (!p || copies <= 0) return;
+          if (!p.barcode) { p.barcode = generateBarcode(); p.updatedAt = Date.now(); made++; }
+          out.push({ p, copies });
+        });
+        if (made) { save(); toast(`${made} new barcode${made > 1 ? 's' : ''} created`); }
+        return out;
+      };
+      $('lbPrint').onclick = () => {
+        const j = jobs();
+        if (!j.length) return toast('Enter the number of labels first');
+        printHTML(`<div class="lbls">${j.map(({ p, copies }) => labelHTML(p).repeat(copies)).join('')}</div>`);
+      };
+      if ($('lbBt')) $('lbBt').onclick = () => {
+        const j = jobs();
+        if (!j.length) return toast('Enter the number of labels first');
+        sendBluetoothPrint(labelsEscPos(j, btJobOpts()), 'Barcode labels');
+      };
+      if ($('lbWifi')) $('lbWifi').onclick = () => {
+        const j = jobs();
+        if (!j.length) return toast('Enter the number of labels first');
+        sendDirectPrint(labelsEscPos(j, { cols: ESCPOS_COLS, cut: true }), 'Barcode labels', S.printerHost, S.printerPort);
+      };
+    }
+  });
+}
+
+/* ---------- Camera scanner ---------- */
+let zxingReady = null;
+function loadZXing() {
+  if (zxingReady) return zxingReady;
+  zxingReady = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = ZXING_JS;
+    s.onload = () => {
+      try {
+        ZXingWASM.prepareZXingModule({
+          overrides: { locateFile: (path, prefix) => (path.endsWith('.wasm') ? ZXING_WASM : prefix + path) },
+          fireImmediately: true
+        }).then(() => resolve(ZXingWASM), reject);
+      } catch (e) { reject(e); }
+    };
+    s.onerror = () => reject(new Error('Scanner files are missing (vendor/zxing-reader.js)'));
+    document.head.appendChild(s);
+  }).catch(e => { zxingReady = null; throw e; });
+  return zxingReady;
+}
+
+/** Returns an async detect(video, canvas) → string|null, using the best engine available. */
+async function makeDetector() {
+  if ('BarcodeDetector' in window) {
+    try {
+      const supported = await BarcodeDetector.getSupportedFormats();
+      const formats = SCAN_FORMATS_NATIVE.filter(f => supported.includes(f));
+      if (formats.length) {
+        const det = new BarcodeDetector({ formats });
+        return { engine: 'native', detect: async video => { const r = await det.detect(video); return r.length ? r[0].rawValue : null; } };
+      }
+    } catch (e) { /* fall back to ZXing */ }
+  }
+  const Z = await loadZXing();
+  return {
+    engine: 'zxing',
+    detect: async (video, canvas) => {
+      const vw = video.videoWidth, vh = video.videoHeight;
+      if (!vw || !vh) return null;
+      const cw = Math.min(vw, 1280), ch = Math.round(vh * cw / vw);
+      canvas.width = cw; canvas.height = ch;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(video, 0, 0, cw, ch);
+      const r = await Z.readBarcodes(ctx.getImageData(0, 0, cw, ch), { formats: SCAN_FORMATS_ZXING, tryHarder: true, maxNumberOfSymbols: 1 });
+      return r.length && r[0].isValid ? r[0].text : null;
+    }
+  };
+}
+
+function scanBeep() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const ac = scanBeep.ac || (scanBeep.ac = new AC());
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.frequency.value = 1900; g.gain.value = 0.08;
+    o.connect(g); g.connect(ac.destination);
+    o.start(); o.stop(ac.currentTime + 0.09);
+  } catch (e) { /* sound is optional */ }
+  if (navigator.vibrate) navigator.vibrate(60);
+}
+
+/**
+ * Full-screen camera scanner above everything (modals stay open underneath).
+ * opts: { title, continuous, onCode(code, api) } — api.status(html), api.close().
+ * A code typed in the box (or from a handheld scanner) works the same as a camera scan.
+ */
+function openScanner(opts) {
+  closeScanner();
+  const root = document.createElement('div');
+  root.id = 'scanRoot';
+  root.innerHTML = `
+    <div class="scan-top">
+      <div class="scan-title">${esc(opts.title || 'Scan barcode')}</div>
+      <button type="button" class="scan-btn" id="scTorch" hidden aria-label="Flashlight">🔦</button>
+      <button type="button" class="scan-btn" id="scClose" aria-label="Close scanner">✕</button>
+    </div>
+    <div class="scan-view">
+      <video id="scVideo" playsinline muted autoplay></video>
+      <div class="scan-frame"><i></i></div>
+      <canvas id="scCanvas" hidden></canvas>
+    </div>
+    <div class="scan-bottom">
+      <div class="scan-status" id="scStatus">Starting camera…</div>
+      <form class="scan-manual" id="scForm">
+        <input id="scInput" inputmode="text" autocomplete="off" enterkeyhint="go" placeholder="Or type / use a handheld scanner…" />
+        <button class="btn sm primary" type="submit">OK</button>
+      </form>
+      ${opts.continuous ? '<button type="button" class="btn grow primary" id="scDone" style="width:100%">Done</button>' : ''}
+    </div>`;
+  document.body.appendChild(root);
+  const video = $('scVideo'), canvas = $('scCanvas'), statusEl = $('scStatus');
+  let stream = null, alive = true, last = '', lastAt = 0, busy = false;
+  const api = {
+    status: html => { statusEl.innerHTML = html; },
+    close: () => closeScanner()
+  };
+  scanState = { stop: () => { alive = false; if (stream) stream.getTracks().forEach(t => t.stop()); root.remove(); } };
+
+  const handle = code => {
+    code = cleanCode(code);
+    if (!code) return;
+    const now = Date.now();
+    if (code === last && now - lastAt < 1800) return;   // the same label still in front of the camera
+    last = code; lastAt = now;
+    scanBeep();
+    opts.onCode(code, api);
+    if (!opts.continuous) closeScanner();
+  };
+  $('scClose').onclick = closeScanner;
+  if ($('scDone')) $('scDone').onclick = closeScanner;
+  $('scForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const v = $('scInput').value; $('scInput').value = '';
+    last = ''; handle(v);
+  });
+
+  (async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return api.status('Camera is not available here. Type the barcode in the box below.');
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      });
+    } catch (e) {
+      return api.status(e && e.name === 'NotAllowedError'
+        ? '📷 Camera permission was refused. Allow the camera for SwiftBill in phone Settings, or type the barcode below.'
+        : 'Could not start the camera (' + esc(e && e.message ? e.message : String(e)) + '). Type the barcode below.');
+    }
+    if (!alive) return stream.getTracks().forEach(t => t.stop());
+    video.srcObject = stream;
+    try { await video.play(); } catch (e) { /* autoplay attribute handles it */ }
+    const track = stream.getVideoTracks()[0];
+    try {
+      const caps = track.getCapabilities ? track.getCapabilities() : {};
+      if (caps.focusMode && caps.focusMode.includes('continuous')) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+      if (caps.torch) {
+        let on = false;
+        $('scTorch').hidden = false;
+        $('scTorch').onclick = () => { on = !on; track.applyConstraints({ advanced: [{ torch: on }] }).catch(() => {}); };
+      }
+    } catch (e) { /* optional camera features */ }
+
+    let det;
+    try { det = await makeDetector(); }
+    catch (e) { return api.status('Scanner could not load: ' + esc(e.message || String(e)) + '. Type the barcode below.'); }
+    if (!alive) return;
+    if (!statusEl.dataset.used) api.status('Point the camera at a barcode');
+    const tick = async () => {
+      if (!alive) return;
+      if (!busy && video.readyState >= 2) {
+        busy = true;
+        try { const code = await det.detect(video, canvas); if (code) { statusEl.dataset.used = '1'; handle(code); } }
+        catch (e) { /* a bad frame: keep going */ }
+        busy = false;
+      }
+      setTimeout(tick, det.engine === 'native' ? 90 : 160);
+    };
+    tick();
+  })();
+}
+let scanState = null;
+function closeScanner() {
+  if (scanState) { const s = scanState; scanState = null; s.stop(); }
+}
+const scannerOpen = () => !!scanState;
+
+/* ---------- Scan to bill (POS) ---------- */
+function scanToBill() {
+  openScanner({
+    title: 'Scan to bill',
+    continuous: true,
+    onCode: (code, api) => {
+      const p = productByBarcode(code);
+      if (!p) {
+        api.status(`❓ <b>${esc(code)}</b> is not saved yet.
+          <button type="button" class="btn sm indigo" id="scAddNew" style="margin-left:6px">+ Add product</button>`);
+        const b = $('scAddNew');
+        if (b) b.onclick = () => { closeScanner(); openProductForm(null, { barcode: code }); };
+        return;
+      }
+      if (!p.rate) {
+        closeScanner();
+        return openProductForm(p, { needRate: true });
+      }
+      const qty = addProductToBill(p);
+      const stockWarn = S.current.mode !== 'SCRAP' && isTracked(p) && qtyOnBill(p) > p.stock ? ` · <span class="stk out">only ${fmtQty(Math.max(0, p.stock))} in stock</span>` : '';
+      const t = calcTotals(S.current);
+      api.status(`✅ <b>${esc(p.name)}</b> × ${qty} · ${fmt(p.rate)}${stockWarn}<br><span class="muted">Bill: ${S.current.items.length} items · ${fmt(t.net)}</span>`);
+      if (modalOpen() && $('ppGrid')) $('ppGrid').dispatchEvent(new Event('sb-refresh'));
+    }
+  });
+}
+
+/* ---------- Handheld (keyboard) scanners ---------- */
+/* They "type" the code very fast and press Enter. On the main screen that would land on the
+   calculator, so a burst of 6+ fast keys ending in Enter is treated as a scan instead. */
+const kbScan = { buf: '', at: 0, fast: true };
+document.addEventListener('keydown', e => {
+  if (CLIENT_MODE || scannerOpen() || e.ctrlKey || e.metaKey || e.altKey) return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  const inField = tag === 'input' || tag === 'textarea';
+  const now = performance.now();
+  if (e.key === 'Enter') {
+    const code = kbScan.buf, fast = kbScan.fast;
+    kbScan.buf = '';
+    if (code.length < 6 || !fast) return;
+    const noteField = e.target.id === 'noteInput';
+    if (inField && !noteField) return;                 // other fields (e.g. product barcode box) handle Enter themselves
+    if (modalOpen() && !noteField) return;
+    const p = productByBarcode(code);
+    if (!p && !/^\d{6,}$/.test(code)) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (noteField) e.target.value = '';
+    else { calc.expr = ''; renderDisplay(); }
+    if (!p) return toast(`Barcode ${code} is not saved — open Products → + New to add it`);
+    if (!p.rate) return openProductForm(p, { needRate: true, back: closeModal });
+    const qty = addProductToBill(p);
+    toast(`Scanned: ${p.name} × ${qty}`);
+    return;
+  }
+  if (e.key && e.key.length === 1) {
+    kbScan.fast = kbScan.buf ? kbScan.fast && now - kbScan.at < 45 : true;
+    kbScan.buf = (now - kbScan.at > 300 ? '' : kbScan.buf) + e.key;
+    if (kbScan.buf.length === 1) kbScan.fast = true;
+    kbScan.at = now;
+  }
+}, true);
+
+/* =====================================================================
+   12e. DEMO DATA (Settings → Load demo data / Remove demo data)
+   Every demo record carries demo: true, so removing it never touches real data.
+   ===================================================================== */
+const hasDemo = () => S.customers.some(c => c.demo) || S.products.some(p => p.demo) || S.history.some(h => h.demo) || S.orders.some(o => o.demo);
+
+function loadDemoData() {
+  if (hasDemo()) return toast('Demo data is already loaded');
+  const day = 86400000, now = Date.now();
+  const ago = (d, h = 11) => { const t = new Date(now - d * day); t.setHours(h, 15, 0, 0); return Math.min(t.getTime(), now - 60000); };
+  const person = (name, phone, kind) => {
+    const c = { id: uid(), name, phone, balance: 0, ledger: [], createdAt: ago(20), demo: true };
+    if (kind) c.kind = kind;
+    S.customers.push(c);
+    return c;
+  };
+  const ledger = (c, e) => { c.ledger.push(Object.assign({ id: uid(), billNo: null, total: 0, paid: 0, balance: 0 }, e)); };
+  const pay = (c, dir, amt, d, method = 'Cash', remark = '') => ledger(c, {
+    date: ago(d, 16), type: dir === 'IN' ? 'PAYMENT IN' : 'PAYMENT OUT', receiptNo: S.nextReceiptNo++,
+    paid: amt, delta: dir === 'IN' ? -amt : amt, method, remark, note: remark || (dir === 'IN' ? 'Payment received' : 'Payment given')
+  });
+
+  // 10 vendors
+  const V = [
+    ['Ali Traders (Mobiles)', '0300-0000101'], ['Karachi Crockery House', '0301-0000102'], ['Lahore Kitchenware', '0302-0000103'],
+    ['Shan Foods Distributor', '0303-0000104'], ['Bilal Unilever Agency', '0304-0000105'], ['Hamza Plastic Works', '0305-0000106'],
+    ['Faisal Electronics', '0306-0000107'], ['Madina Cosmetics', '0307-0000108'], ['Al-Rehman Cleaning Supplies', '0308-0000109'],
+    ['Punjab Steel Utensils', '0309-0000110']
+  ].map(([n, ph]) => person(n, ph, 'VENDOR'));
+  const buy = (v, amt, d, note) => ledger(v, { date: ago(d, 10), type: 'PURCHASE', total: amt, delta: -amt, note });
+  buy(V[0], 168000, 12, 'Vendor bill 4471'); pay(V[0], 'OUT', 100000, 8, 'Bank Transfer');
+  buy(V[1], 45000, 10, 'Crockery stock'); pay(V[1], 'OUT', 45000, 6);
+  buy(V[2], 38500, 9, 'Pans and cookers');
+  buy(V[3], 9600, 5, 'Masala cartons'); pay(V[3], 'OUT', 5000, 3, 'JazzCash');
+  buy(V[4], 15600, 7, 'Surf Excel + soap');
+  ledger(V[5], { date: ago(15), type: 'OPENING', delta: -7800, note: 'Opening balance' });
+  pay(V[6], 'OUT', 2000, 4, 'Cash', 'Advance for chargers');
+  buy(V[8], 6840, 2, 'Harpic + cleaners');
+  buy(V[9], 22000, 11, 'Steel utensils'); pay(V[9], 'OUT', 22000, 1);
+
+  // Categories + 10 products (some low / out of stock, some without barcode)
+  ['Mobiles', 'Crockery', 'Kitchen', 'Grocery', 'Household', 'Washroom'].forEach(c => ensureCategory(c));
+  S.demoCategories = ['Mobiles', 'Crockery', 'Kitchen', 'Grocery', 'Household', 'Washroom'];
+  const P = [
+    ['Samsung Galaxy A15', 42000, 'Mobiles', V[0], 4, 3, true],
+    ['Tea Cup Set 6 pcs', 1200, 'Crockery', V[1], 15, 5, true],
+    ['Dinner Set 32 pcs', 8500, 'Crockery', V[1], 2, 2, true],
+    ['Non-stick Fry Pan 26cm', 2400, 'Kitchen', V[2], 9, 3, true],
+    ['Pressure Cooker 7L', 6500, 'Kitchen', V[2], 0, 2, true],
+    ['Shan Biryani Masala', 160, 'Grocery', V[3], 48, 20, true],
+    ['Surf Excel 1kg', 520, 'Household', V[4], 18, 10, false],
+    ['Plastic Bucket 20L', 650, 'Household', V[5], 12, 4, false],
+    ['Harpic 500ml', 380, 'Washroom', V[8], 6, 8, true],
+    ['Lifebuoy Soap', 120, 'Washroom', V[4], 60, 24, false]
+  ].map(([name, rate, category, v, stock, minStock, bc]) => {
+    if (getProduct(name)) name += ' (demo)';            // never replaces a real product with the same name
+    const p = { id: uid(), key: name.toLowerCase(), name, rate, type: 'SALE', uses: 0, updatedAt: ago(3), category,
+      vendorId: v.id, stock, minStock, demo: true };
+    if (bc) p.barcode = generateBarcode();
+    S.products.push(p);
+    return p;
+  });
+
+  // 10 customers with bills, credit, part payments and advances
+  const C = [
+    ['Ahmed Raza', '0311-0000201'], ['Bilal Khan', '0312-0000202'], ['Sana Bibi', '0313-0000203'], ['Usman Ghani', '0314-0000204'],
+    ['Ayesha Noor', '0315-0000205'], ['Hafiz Kareem', '0316-0000206'], ['Tariq Mehmood', '0317-0000207'], ['Zainab Shah', '0318-0000208'],
+    ['Imran Butt', '0319-0000209'], ['Nadia Pervaiz', '0320-0000210']
+  ].map(([n, ph]) => person(n, ph));
+
+  const bill = (c, lines, paid, d, extra = {}) => {
+    const items = lines.map(([p, qty, type]) => ({ name: p.name, type: type || 'SALE', rate: p.rate, qty, total: round2(p.rate * qty) }));
+    const sale = round2(items.filter(i => i.type === 'SALE').reduce((s, i) => s + i.total, 0));
+    const scrap = round2(items.filter(i => i.type === 'SCRAP').reduce((s, i) => s + i.total, 0));
+    const charges = extra.charges || 0, discount = extra.discount || 0;
+    const net = round2(sale - scrap + charges - discount);
+    const cash = paid == null ? net : paid;
+    const due = round2(net - cash);
+    const prev = c ? c.balance : null;
+    const status = Math.abs(due) < 0.005 ? 'PAID' : cash ? 'PARTIAL' : 'CREDIT';
+    const no = S.nextBillNo++;
+    const rec = {
+      no, createdAt: ago(d, 12), date: ago(d, 12), edited: false, customerId: c ? c.id : null,
+      customerName: c ? c.name : 'Walking Customer', items, saleAmt: sale, scrapAmt: scrap, charges, discount, net,
+      cash, tendered: Math.abs(cash), change: 0, due, prevBalance: c ? prev : null, newBalance: c ? round2(prev + due) : null,
+      status, demo: true
+    };
+    if (c) {
+      ledger(c, { date: rec.date, type: 'BILL', billNo: no, total: net, paid: cash, delta: due,
+        note: status === 'PAID' ? 'Bill settled' : status === 'PARTIAL' ? 'Partial payment' : 'On credit' });
+      recalcCustomer(c);
+    }
+    S.history.unshift(rec);
+  };
+  bill(C[0], [[P[1], 2], [P[5], 5]], 0, 9);                                    // Ahmed: on credit 3,200
+  pay(C[0], 'IN', 700, 6, 'Cash', 'Part payment'); recalcCustomer(C[0]);        // → owes 2,500
+  bill(C[1], [[P[0], 1]], 30000, 8);                                            // Bilal: owes 12,000
+  bill(C[2], [[P[6], 3], [P[9], 6]], null, 7);                                  // Sana: paid in full
+  pay(C[3], 'IN', 1000, 6, 'JazzCash', 'Advance'); recalcCustomer(C[3]);        // Usman: advance 1,000 (shop owes)
+  bill(C[4], [[P[8], 2]], 0, 5);                                                // Ayesha: owes 760
+  bill(C[5], [[P[3], 1], [P[7], 2]], null, 4, { discount: 200 });              // Hafiz: paid, with discount
+  bill(C[6], [[P[2], 2], [P[4], 2], [P[1], 3]], 15000, 3, { charges: 500 });   // Tariq: big partial
+  bill(C[7], [[P[9], 10]], null, 2);                                            // Zainab: paid
+  bill(C[8], [[P[3], 1], [P[6], 3], [P[5], 4]], 0, 1);                          // Imran: credit
+  ledger(C[9], { date: ago(10), type: 'OPENING', delta: -500, note: 'Opening balance' }); recalcCustomer(C[9]);   // Nadia: advance
+  bill(null, [[P[5], 2], [P[9], 4]], null, 0);                                  // walking customer, paid
+  bill(C[1], [[P[2], 1], [P[4], 1, 'SCRAP']], 0, 0);                           // scrap / return deducted: 8,500 − 6,500 on credit
+  [...V, ...C].forEach(recalcCustomer);
+
+  // Purchase orders: one waiting, one received
+  const order = (v, lines, d, received) => {
+    const o = { id: uid(), no: 'PO-' + String(S.nextOrderNo++).padStart(4, '0'), vendorId: v.id, vendorName: v.name, phone: v.phone,
+      items: lines.map(([p, q]) => ({ id: p.id, name: p.name, qty: q })), note: '', createdAt: ago(d, 9), status: received ? 'RECEIVED' : 'SENT', demo: true };
+    if (received) { o.receivedAt = ago(d - 1, 15); o.received = lines.map(([p, q]) => [p.id, q]); }
+    S.orders.unshift(o);
+  };
+  order(V[1], [[P[1], 10], [P[2], 3]], 10, true);
+  order(V[0], [[P[0], 6]], 1, false);
+
+  S.demoLoaded = Date.now();
+  save(); render();
+  toast('Demo data loaded: 10 products, 10 vendors, 10 customers');
+}
+
+function removeDemoData() {
+  const demoIds = new Set(S.customers.filter(c => c.demo).map(c => c.id));
+  S.customers = S.customers.filter(c => !c.demo);
+  S.products = S.products.filter(p => !p.demo);
+  S.history = S.history.filter(h => !h.demo);
+  S.orders = S.orders.filter(o => !o.demo);
+  [S.current, ...S.held].forEach(b => { if (demoIds.has(b.customerId)) b.customerId = null; });
+  const used = new Set(S.products.map(p => catOf(p).toLowerCase()));
+  (S.demoCategories || []).forEach(c => { if (!used.has(c.toLowerCase())) S.categories = S.categories.filter(x => !sameText(x, c)); });
+  delete S.demoCategories; delete S.demoLoaded;
+  save(); render();
+  toast('Demo data removed');
+}
+
+/* =====================================================================
+   12f. LICENCE / ACTIVATION
+   Each phone registers once (shop, owner, phone). The licence server (your Google
+   Sheet + Apps Script) answers with a status signed by your private RSA key; the app
+   checks the signature with the public key below, so the stored licence cannot be faked.
+   Off while LICENSE.apiUrl is empty. Never shown on customer e-invoice links.
+   ===================================================================== */
+const APP_VERSION = '1.3.0';
+const LICENSE = {
+  apiUrl: 'https://script.google.com/macros/s/AKfycbwgGd4w7OTuv11XcRCmLc-v-Nn2-JfrOStUYt4ZTx8IxHz3IbHhRgKAmwt1gbLkjCFh/exec',   // Empty = licence check off
+  ownerWhatsApp: '923343518687',   // activation requests (0334-3518687)
+  publicKey: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6zROR3Zjfc-mDW1tJizLou3kKpCx6ZR3NKzrUC24Fz3uZc4PxOFWN9_za1kRcdsJXS53JlL7ynbzS76JV2BnV4yUdaulGrn6Ot5Eqq3aItFke3V4IMujC8D0104ELNOOIpCKUau7KRfpJJHVQiojflYmxuecNLQ8fCPDerkfuZ0rwT-JBbZNkjSg8_idVSr4nfu9dXQ3nhd543CyoRkhgWRFRumT29pPk9WkzyxNhbnR3W6hAnx0Eq-cgvzJnouYiQDqIbFCGYjX06U21PY2g1-3EEt6crSMe5ZI5JVLkV5NICVJ5VTSBqc_p1Hm4Ub8qEq1CqMhM6kzXAfLnRK3SwIDAQAB'
+};
+const LIC_KEY = 'swiftbill_license_v1';
+const LIC_CHECK_EVERY = 6 * 3600 * 1000;      // refresh the licence in the background every 6 hours
+const LIC_LATER_DAYS = 3;                     // shops that already have bills/customers may register later for 3 days
+let licLockedState = null;                    // decision currently shown on the lock screen
+
+const licLoad = () => { try { return JSON.parse(localStorage.getItem(LIC_KEY)) || {}; } catch (e) { return {}; } };
+const licSave = st => { try { localStorage.setItem(LIC_KEY, JSON.stringify(st)); } catch (e) { /* storage full */ } };
+function licDeviceId(st) {
+  if (!st.deviceId) st.deviceId = (crypto.randomUUID ? crypto.randomUUID() : uid() + '-' + uid() + '-' + uid()).toLowerCase();
+  return st.deviceId;
+}
+const licCode = id => String(id || '').replace(/[^a-z0-9]/gi, '').slice(0, 8).toUpperCase().replace(/^(.{4})/, '$1-');
+
+let licKeyPromise = null;
+async function licVerify(payload, sig, deviceId) {
+  if (!payload || !sig || !(window.crypto && crypto.subtle)) return null;
+  try {
+    licKeyPromise = licKeyPromise || crypto.subtle.importKey('spki', b64urlDecode(LICENSE.publicKey),
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+    const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', await licKeyPromise, b64urlDecode(sig), new TextEncoder().encode(payload));
+    if (!ok) return null;
+    const lic = JSON.parse(payload);
+    return lic && lic.deviceId === deviceId ? lic : null;   // caller sets lic.__at (when this reply was received)
+  } catch (e) { return null; }
+}
+
+/** One request to the licence server; stores and returns the verified licence. Throws on any failure. */
+async function licCall(action, extra) {
+  const st = licLoad(), deviceId = licDeviceId(st);
+  licSave(st);
+  if (!navigator.onLine) throw new Error('No internet connection');
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 20000);
+  try {
+    const r = await fetch(LICENSE.apiUrl, {
+      method: 'POST', redirect: 'follow', signal: ctl.signal,
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },     // "simple" request: no CORS pre-flight for Apps Script
+      body: JSON.stringify(Object.assign({ action, deviceId, appVersion: APP_VERSION, ua: navigator.userAgent.slice(0, 200) }, extra))
+    });
+    const j = await r.json();
+    if (!j || !j.ok) throw new Error((j && j.error) || 'Licence server error');
+    const lic = await licVerify(j.payload, j.sig, deviceId);
+    if (!lic) throw new Error('Licence reply could not be verified');
+    const fresh = licLoad();
+    lic.__at = Date.now();
+    Object.assign(fresh, { payload: j.payload, sig: j.sig, checkedAt: lic.__at });
+    licSave(fresh);
+    return lic;
+  } catch (e) {
+    throw e && e.name === 'AbortError' ? new Error('Licence server did not answer') : e;
+  } finally { clearTimeout(timer); }
+}
+
+/**
+ * Times are measured on the server's clock: server time at the last check + time passed on this
+ * phone since then. A phone with a wrong date is neither locked by mistake nor able to stretch its
+ * offline days by turning the clock back (a clock moved back by more than a day asks for a check).
+ */
+function licDecision(lic) {
+  if (!lic || lic.status === 'UNREGISTERED') return 'REGISTER';
+  let elapsed = Date.now() - (lic.__at || 0);
+  if (!lic.__at || elapsed < -86400000) elapsed = Infinity;
+  const now = lic.issuedAt + Math.max(0, elapsed);
+  if (lic.status === 'BLOCKED') return 'BLOCKED';
+  if (lic.status === 'PENDING') return 'PENDING';
+  if (lic.status === 'EXPIRED') return 'EXPIRED';
+  if (lic.status === 'TRIAL' && lic.trialEnds && now > lic.trialEnds) return 'EXPIRED';
+  if (lic.status === 'ACTIVE' && lic.expires && now > lic.expires) return 'EXPIRED';
+  if (!(now <= lic.validUntil)) return 'OFFLINE';
+  return 'OK';
+}
+
+const licNow = lic => lic.issuedAt + Math.max(0, Date.now() - (lic.__at || Date.now()));
+
+/** The licence this phone has (verified), or null. */
+async function licCurrent() {
+  const st = licLoad();
+  const lic = await licVerify(st.payload, st.sig, licDeviceId(st));
+  if (lic) lic.__at = st.checkedAt || 0;
+  return lic;
+}
+
+/** Boot: decide, refresh in the background, lock only when the licence says so. */
+async function licenseGate() {
+  if (!LICENSE.apiUrl || CLIENT_MODE) return;
+  let lic = await licCurrent(), d = licDecision(lic);
+  if (d === 'OK') {
+    licTrialHint(lic);
+    if (Date.now() - (licLoad().checkedAt || 0) > LIC_CHECK_EVERY) licRefresh();
+    return;
+  }
+  if (d !== 'REGISTER') {                       // maybe approved / renewed since: ask the server first
+    licShow('CHECKING', lic);
+    try { lic = await licCall('check'); d = licDecision(lic); } catch (e) { /* keep the stored decision */ }
+    if (d === 'OK') return licUnlock(lic);
+  }
+  licShow(d, lic);
+}
+
+/** Background check; locks only if the server now says the phone must stop. */
+async function licRefresh() {
+  if (!LICENSE.apiUrl || CLIENT_MODE) return;
+  try {
+    const lic = await licCall('check'), d = licDecision(lic);
+    if (d === 'OK') { if (licLockedState) licUnlock(lic); }
+    else licShow(d, lic);
+  } catch (e) {
+    const d = licDecision(await licCurrent());
+    if (d !== 'OK' && !licLockedState) licShow(d, await licCurrent());
+  }
+}
+
+function licTrialHint(lic) {
+  if (lic && lic.status === 'TRIAL' && lic.trialEnds) {
+    const days = Math.ceil((lic.trialEnds - licNow(lic)) / 86400000);
+    if (days <= 3) setTimeout(() => toast(`Trial: ${days} day${days === 1 ? '' : 's'} left — contact us to activate`), 1500);
+  }
+}
+
+function licUnlock(lic) {
+  licLockedState = null;
+  const r = $('licRoot');
+  if (r) r.remove();
+  document.body.classList.remove('lic-locked');
+  if (lic && lic.status === 'ACTIVE') toast('✅ SwiftBill is activated');
+  else if (lic && lic.status === 'TRIAL') toast('✅ Trial started — enjoy SwiftBill');
+}
+
+function licWhatsAppText(lic, why) {
+  const st = licLoad();
+  const p = st.profile || {};
+  return [`Assalam o Alaikum, I want to ${why} SwiftBill POS.`, `Shop: ${p.shopName || (lic && lic.shopName) || ''}`,
+    `Owner: ${p.ownerName || ''}`, `Phone: ${p.phone || ''}`, `Device code: ${licCode(st.deviceId)}`].join('\n');
+}
+
+/** Days an existing shop (bills or customers on this phone) may still postpone registration. */
+function licLaterLeft(st) {
+  if (!(S.history.length || S.customers.length)) return 0;
+  if (!st.laterSince) { st.laterSince = Date.now(); licSave(st); }
+  const used = Math.max(0, Date.now() - st.laterSince);
+  return Math.max(0, LIC_LATER_DAYS - Math.floor(used / 86400000));
+}
+
+/** Full-screen licence screen above everything. state: REGISTER | PENDING | EXPIRED | BLOCKED | OFFLINE | CHECKING */
+function licShow(state, lic) {
+  licLockedState = state;
+  closeScanner();
+  let root = $('licRoot');
+  if (!root) { root = document.createElement('div'); root.id = 'licRoot'; document.body.appendChild(root); }
+  document.body.classList.add('lic-locked');
+  const st = licLoad(), code = licCode(licDeviceId(st)), p = st.profile || {};
+  licSave(st);
+  const wa = LICENSE.ownerWhatsApp
+    ? `<a class="btn wa lic-wide" id="licWa" href="#" rel="noopener">Send code on WhatsApp</a>` : '';
+  const backup = `<button type="button" class="btn lic-wide" id="licBackup">⬇ Download Backup (your data)</button>`;
+  const codeBox = `<div class="lic-code"><span>DEVICE CODE</span><b>${esc(code)}</b></div>`;
+  const view = {
+    CHECKING: ['⏳', 'Checking licence…', 'One moment please.', ''],
+    REGISTER: ['🔐', 'Activate SwiftBill POS', 'Register this phone once. Your bills and Khata stay on this phone.', `
+      <form id="licForm" class="lic-form" autocomplete="on">
+        <div class="field"><label>SHOP NAME *</label><input id="lShop" maxlength="60" value="${esc(p.shopName || (S.shopName && S.shopName !== 'SWIFTBILL POS' ? S.shopName : ''))}" autocomplete="organization" /></div>
+        <div class="field"><label>OWNER NAME *</label><input id="lOwner" maxlength="60" value="${esc(p.ownerName || '')}" autocomplete="name" /></div>
+        <div class="field"><label>MOBILE / WHATSAPP *</label><input id="lPhone" type="tel" maxlength="20" value="${esc(p.phone || '')}" placeholder="03xx-xxxxxxx" autocomplete="tel" /></div>
+        <div class="field"><label>CITY</label><input id="lCity" maxlength="40" value="${esc(p.city || '')}" autocomplete="address-level2" /></div>
+        <div class="lic-err" id="licErr"></div>
+        <button class="btn primary lic-wide" type="submit" id="licGo">Register &amp; Start</button>
+        ${licLaterLeft(st) > 0 ? `<button type="button" class="btn lic-wide" id="licLater">Later (${licLaterLeft(st)} day${licLaterLeft(st) === 1 ? '' : 's'} left)</button>` : ''}
+      </form>`],
+    PENDING: ['🕓', 'Waiting for approval', 'This phone is registered. It starts working as soon as it is approved.', codeBox + wa +
+      '<button type="button" class="btn primary lic-wide" id="licRetry">Check again</button>'],
+    EXPIRED: ['⌛', (lic && lic.trialEnds && lic.status !== 'ACTIVE' && !lic.expires) ? 'Free trial has ended' : 'Licence has ended',
+      'To keep using SwiftBill, contact us to activate this phone. Your data is safe.', codeBox + wa +
+      '<button type="button" class="btn primary lic-wide" id="licRetry">Check again</button>' + backup],
+    BLOCKED: ['⛔', 'This phone is not allowed', 'Please contact us. Your data is still on this phone — download a backup to keep it.',
+      codeBox + wa + '<button type="button" class="btn lic-wide" id="licRetry">Check again</button>' + backup],
+    OFFLINE: ['📶', 'Connect to the internet', 'SwiftBill confirms its licence online every few days. Turn on mobile data or Wi-Fi, then tap Retry. Your data is safe.',
+      codeBox + '<button type="button" class="btn primary lic-wide" id="licRetry">Retry</button>' + backup]
+  }[state] || ['🔐', 'Licence', '', ''];
+  root.innerHTML = `
+    <div class="lic-card" role="dialog" aria-modal="true" aria-label="${esc(view[1])}">
+      <div class="lic-ico">${view[0]}</div>
+      <h1>${esc(view[1])}</h1>
+      <p>${view[2]}</p>
+      ${lic && lic.note && state !== 'REGISTER' ? `<p class="lic-note">${esc(lic.note)}</p>` : ''}
+      ${view[3]}
+      <div class="lic-foot">SwiftBill POS ${APP_VERSION}</div>
+    </div>`;
+
+  if ($('licWa')) $('licWa').href = 'https://wa.me/' + LICENSE.ownerWhatsApp.replace(/\D/g, '') + '?text=' +
+    encodeURIComponent(licWhatsAppText(lic, state === 'PENDING' ? 'activate' : 'renew'));
+  if ($('licBackup')) $('licBackup').onclick = exportBackup;
+  if ($('licLater')) $('licLater').onclick = () => {
+    licLockedState = null;
+    root.remove();
+    document.body.classList.remove('lic-locked');
+    toast(`Please register within ${licLaterLeft(licLoad())} day(s) to keep using SwiftBill`);
+  };
+  if ($('licRetry')) $('licRetry').onclick = async e => {
+    const b = e.currentTarget; b.disabled = true; b.textContent = 'Checking…';
+    try {
+      const l = await licCall('check'), d = licDecision(l);
+      if (d === 'OK') return licUnlock(l);
+      licShow(d, l);
+      if (d === state) toast(d === 'PENDING' ? 'Not approved yet' : 'Still not active');
+    } catch (err) {
+      b.disabled = false; b.textContent = state === 'OFFLINE' ? 'Retry' : 'Check again';
+      toast(err.message || 'Could not reach the licence server');
+    }
+  };
+  if ($('licForm')) $('licForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const prof = { shopName: cleanName($('lShop').value), ownerName: cleanName($('lOwner').value),
+      phone: $('lPhone').value.trim(), city: cleanName($('lCity').value) };
+    const err = msg => { $('licErr').textContent = msg; };
+    if (prof.shopName.length < 2) return err('Enter the shop name');
+    if (prof.ownerName.length < 2) return err('Enter the owner name');
+    if (prof.phone.replace(/\D/g, '').length < 10) return err('Enter a valid mobile number');
+    const s2 = licLoad(); s2.profile = prof; licSave(s2);
+    $('licGo').disabled = true; $('licGo').textContent = 'Registering…'; err('');
+    try {
+      const l = await licCall('register', prof), d = licDecision(l);
+      if (S.shopName === 'SWIFTBILL POS' || !S.shopName) { S.shopName = prof.shopName; save(); renderHeader(); }
+      if (d === 'OK') licUnlock(l); else licShow(d, l);
+    } catch (ex) {
+      $('licGo').disabled = false; $('licGo').textContent = 'Register & Start';
+      err(ex.message === 'No internet connection' ? 'No internet connection — turn on mobile data or Wi-Fi and try again.' : ex.message);
+    }
+  });
+}
+
+// While locked, keys never reach the POS underneath (calculator, scanner shortcuts)
+window.addEventListener('keydown', e => {
+  if (licLockedState && !(e.target && e.target.closest && e.target.closest('#licRoot'))) { e.stopImmediatePropagation(); e.preventDefault(); }
+}, true);
+window.addEventListener('online', () => { if (licLockedState === 'OFFLINE') licRefresh(); });
+setInterval(() => { if (LICENSE.apiUrl && !CLIENT_MODE && Date.now() - (licLoad().checkedAt || 0) > LIC_CHECK_EVERY) licRefresh(); }, 30 * 60 * 1000);
+
+/** Settings line: status and device code. */
+async function licSettingsLine() {
+  if (!LICENSE.apiUrl) return '';
+  const lic = await licCurrent(), code = licCode(licLoad().deviceId);
+  if (!lic) return `Licence: not registered · Device code ${code}`;
+  const left = lic.status === 'TRIAL' && lic.trialEnds ? ` · ${Math.max(0, Math.ceil((lic.trialEnds - licNow(lic)) / 86400000))} days left`
+    : lic.status === 'ACTIVE' && lic.expires ? ` · until ${fmtDate(lic.expires, false)}` : '';
+  return `Licence: ${lic.status}${left} · Device code ${code}`;
 }
 
 /* =====================================================================
@@ -3955,8 +5894,8 @@ function openDeposit(customerId, dir, onBack) {
         <div class="row-main"><div class="row-t">${esc(c.name)}</div><div class="row-s">${esc(c.phone || 'No phone saved')}</div></div>
       </div>
       <div class="seg" id="dDir">
-        <button type="button" data-dir="IN">Received from customer</button>
-        <button type="button" data-dir="OUT">Paid to customer</button>
+        <button type="button" data-dir="IN">Received from ${pwl(c)}</button>
+        <button type="button" data-dir="OUT">Paid to ${pwl(c)}</button>
       </div>
       <div class="stats">
         <div class="stat"><div class="stat-l">PREVIOUS BALANCE</div><div class="stat-v sm" id="dPrev"></div></div>
@@ -3978,9 +5917,9 @@ function openDeposit(customerId, dir, onBack) {
       const amtEl = $('dAmt');
       const update = () => {
         const amt = round2(Math.abs(num(amtEl.value)));
-        $('dPrev').textContent = fmtBalCust(c.balance);
-        $('dAfter').textContent = fmtBalCust(round2(c.balance + (dir === 'IN' ? -amt : amt)));
-        $('dAmtLabel').textContent = dir === 'IN' ? 'AMOUNT DEPOSITED / RECEIVED' : 'AMOUNT PAID TO CUSTOMER';
+        $('dPrev').textContent = (isVendor(c) ? fmtBalVendor : fmtBalCust)(c.balance);
+        $('dAfter').textContent = (isVendor(c) ? fmtBalVendor : fmtBalCust)(round2(c.balance + (dir === 'IN' ? -amt : amt)));
+        $('dAmtLabel').textContent = dir === 'IN' ? 'AMOUNT DEPOSITED / RECEIVED' : 'AMOUNT PAID TO ' + pwU(c);
         $('dDir').querySelectorAll('[data-dir]').forEach(b => b.classList.toggle('on', b.dataset.dir === dir));
         $('dSave').className = 'btn grow ' + (dir === 'IN' ? 'primary' : 'indigo');
       };
@@ -3999,7 +5938,7 @@ function openDeposit(customerId, dir, onBack) {
       });
       $('dFull').onclick = () => {
         if ((dir === 'IN' && c.balance <= 0) || (dir === 'OUT' && c.balance >= 0)) {
-          return toast(dir === 'IN' ? 'Customer has no amount due' : 'No advance to pay back');
+          return toast(dir === 'IN' ? pw(c) + ' has no amount due' : isVendor(c) ? 'Nothing is owed to this vendor' : 'No advance to pay back');
         }
         amtEl.value = Math.abs(c.balance);
         update();
@@ -4038,14 +5977,14 @@ function depositSlipHTML(c, e) {
     <div class="inv-meta">
       <div><span>Receipt No</span><b>${receiptLabel(e)}</b></div>
       <div><span>Date</span><b>${d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}</b></div>
-      <div><span>Customer</span><b>${esc(c.name)}</b></div>
+      <div><span>${pw(c)}</span><b>${esc(c.name)}</b></div>
       <div><span>Time</span><b>${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</b></div>
       <div><span>Phone</span><b>${esc(c.phone || '—')}</b></div>
       <div><span>Method</span><b>${esc(e.method || 'Cash')}</b></div>
     </div>
     <div class="inv-sum">
       <div><span>Previous Balance</span><span>${fmtBalCust(prev)}</span></div>
-      <div class="dep-amt"><span>${isIn ? 'Amount Deposited' : 'Amount Paid to Customer'}</span><span>${isIn ? '− ' : '+ '}${fmt(e.paid)}</span></div>
+      <div class="dep-amt"><span>${isIn ? 'Amount Deposited' : 'Amount Paid to ' + pw(c)}</span><span>${isIn ? '− ' : '+ '}${fmt(e.paid)}</span></div>
       <div class="net"><span>REMAINING BALANCE</span><span>${fmtBalCust(e.balance)}</span></div>
     </div>
     ${e.remark ? `<div class="inv-count"><span>Note</span><b>${esc(e.remark)}</b></div>` : ''}
@@ -4054,7 +5993,7 @@ function depositSlipHTML(c, e) {
         ? 'Received with thanks. This amount has been credited to your Khata account.'
         : 'This amount has been paid to you and adjusted in your Khata account.'}
         Please keep this receipt for your records.</p>
-      <div class="inv-sign"><div>Customer Sign</div><div>Auth. Sign</div></div>
+      <div class="inv-sign"><div>${pw(c)} Sign</div><div>Auth. Sign</div></div>
     </div>
   </div>`;
 }
@@ -4064,7 +6003,7 @@ function depositText(c, e) {
   const prev = round2(e.balance - e.delta);
   return [
     `*${isIn ? 'Payment Receipt' : 'Payment Voucher'} ${receiptLabel(e)}* — ${S.shopName || 'SWIFTBILL POS'}`,
-    `Customer: ${c.name}`,
+    `${pw(c)}: ${c.name}`,
     `Date: ${fmtDate(e.date)}`,
     `Method: ${e.method || 'Cash'}`,
     '',
@@ -4089,7 +6028,7 @@ function showDepositSlip(customerId, entryId, onBack) {
     body: `
       <div class="share-box">
         <button class="btn wa" id="dsWa">${WA_SVG} Send Payment Receipt via WhatsApp</button>
-        ${c.phone ? '' : '<div class="muted" style="font-size:12px">No phone saved for this customer — WhatsApp will ask you to choose the chat.</div>'}
+        ${c.phone ? '' : '<div class="muted" style="font-size:12px">No phone saved for this ${pwl(c)} — WhatsApp will ask you to choose the chat.</div>'}
       </div>` + html,
     footer: `<button class="btn f2" id="dsPrint">🖨 Print</button>
              <button class="btn f2 indigo" id="dsPdf">⬇ Download Full PDF</button>${wifiPrintButtonHTML('dsWifi')}${btPrintButtonHTML('dsBt')}${directPrintHintHTML()}`,
@@ -4121,7 +6060,7 @@ function splitEntry(e) {
   return { debit: round2(debit), credit: round2(credit) };
 }
 
-function entryDesc(e) {
+function entryDesc(e, c) {
   if (e.billNo) {
     const paid = num(e.paid);
     return {
@@ -4130,7 +6069,8 @@ function entryDesc(e) {
     };
   }
   if (e.type === 'PAYMENT IN') return { title: `Payment received${e.receiptNo ? ' ' + receiptLabel(e) : ''}`, sub: [e.method, e.remark].filter(Boolean).join(' · ') };
-  if (e.type === 'PAYMENT OUT') return { title: `Paid to customer${e.receiptNo ? ' ' + receiptLabel(e) : ''}`, sub: [e.method, e.remark].filter(Boolean).join(' · ') };
+  if (e.type === 'PURCHASE') return { title: 'Purchase' + (e.orderNo ? ' · ' + e.orderNo : ''), sub: e.note || '' };
+  if (e.type === 'PAYMENT OUT') return { title: `Paid to ${c ? pwl(c) : 'customer'}${e.receiptNo ? ' ' + receiptLabel(e) : ''}`, sub: [e.method, e.remark].filter(Boolean).join(' · ') };
   if (e.type === 'OPENING') return { title: 'Opening balance', sub: '' };
   return { title: e.note || e.type, sub: '' };
 }
@@ -4148,7 +6088,7 @@ function statementData(c, from, to) {
     const { debit, credit } = splitEntry(e);
     bal = round2(bal + debit - credit);
     totalDebit += debit; totalCredit += credit;
-    return { e, date: e.date, desc: entryDesc(e), debit, credit, balance: bal };
+    return { e, date: e.date, desc: entryDesc(e, c), debit, credit, balance: bal };
   });
   return { opening, lines, totalDebit: round2(totalDebit), totalCredit: round2(totalCredit), closing: bal };
 }
@@ -4159,10 +6099,10 @@ function statementHTML(c, data, period) {
   <div class="inv stmt">
     <div class="inv-head">
       <div class="inv-shop">${esc(S.shopName || 'SWIFTBILL POS')}</div>
-      <div class="inv-title">CUSTOMER ACCOUNT STATEMENT</div>
+      <div class="inv-title">${pwU(c)} ACCOUNT STATEMENT</div>
     </div>
     <div class="inv-meta">
-      <div><span>Customer</span><b>${esc(c.name)}</b></div>
+      <div><span>${pw(c)}</span><b>${esc(c.name)}</b></div>
       <div><span>Period</span><b>${esc(period)}</b></div>
       <div><span>Phone</span><b>${esc(c.phone || '—')}</b></div>
       <div><span>Generated</span><b>${esc(fmtDate(Date.now()))}</b></div>
@@ -4192,7 +6132,7 @@ function statementHTML(c, data, period) {
       <div class="inv-count"><span>Entries in period</span><b>${data.lines.length}</b></div>
       <p class="inv-policy">Debit = invoices / amounts charged to your account. Credit = payments and scrap deductions.
         A positive balance is the amount due from you; a negative balance is an advance in your favour.</p>
-      <div class="inv-sign"><div>Customer Sign</div><div>Auth. Sign</div></div>
+      <div class="inv-sign"><div>${pw(c)} Sign</div><div>Auth. Sign</div></div>
     </div>
   </div>`;
 }
@@ -4202,7 +6142,7 @@ function statementText(c, data, period) {
   const shown = data.lines.slice(-MAX);
   const L = [
     `*Account Statement — ${S.shopName || 'SWIFTBILL POS'}*`,
-    `Customer: ${c.name}`,
+    `${pw(c)}: ${c.name}`,
     `Period: ${period}`,
     `Generated: ${fmtDate(Date.now())}`,
     '',
@@ -4247,7 +6187,7 @@ function openStatement(customerId, onBack, range) {
     body: `
       <div class="share-box">
         <button class="btn wa" id="stWa">${WA_SVG} Send Statement via WhatsApp</button>
-        ${c.phone ? '' : '<div class="muted" style="font-size:12px">No phone saved for this customer — WhatsApp will ask you to choose the chat.</div>'}
+        ${c.phone ? '' : '<div class="muted" style="font-size:12px">No phone saved for this ${pwl(c)} — WhatsApp will ask you to choose the chat.</div>'}
       </div>
       <div class="range">
         <label>FROM<input type="date" id="stFrom" value="${esc(range.from)}" /></label>
@@ -4498,8 +6438,8 @@ function escposDoc(opts) {
  */
 function statementEscPos(c, data, period, opts) {
   const d = escposDoc(opts), W = d.W;
-  d.header('CUSTOMER STATEMENT');
-  d.bold(true); d.wrap('Customer: ' + c.name); d.bold(false);
+  d.header(pwU(c) + ' STATEMENT');
+  d.bold(true); d.wrap(pw(c) + ': ' + c.name); d.bold(false);
   if (c.phone) d.wrap('Phone: ' + c.phone);
   d.wrap('Period: ' + period);
   d.wrap('Printed: ' + fmtDate(Date.now()));
@@ -4539,18 +6479,18 @@ function statementEscPos(c, data, period, opts) {
   d.size(1, 1); d.bold(false);
   d.rule('=');
   return d.footer('Debit = invoices / amounts charged to your account. Credit = payments and scrap deductions. ' +
-    'A positive balance is the amount due from you; a negative balance is an advance in your favour.', 'Customer Sign');
+    'A positive balance is the amount due from you; a negative balance is an advance in your favour.', pw(c) + ' Sign');
 }
 
 /** Payment receipt / voucher slip for one saved Khata payment. Read-only: reprints show the same values. */
 function depositEscPos(c, e, opts) {
   const d = escposDoc(opts);
   const dt = new Date(e.date), isIn = e.type === 'PAYMENT IN', prev = round2(e.balance - e.delta);
-  d.header(isIn ? 'CUSTOMER PAYMENT RECEIPT' : 'PAYMENT VOUCHER');
+  d.header(isIn ? pwU(c) + ' PAYMENT RECEIPT' : 'PAYMENT VOUCHER');
   d.bold(true); d.sum('Receipt No', receiptLabel(e)); d.bold(false);
   d.sum('Date', dt.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }));
   d.sum('Time', dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
-  d.bold(true); d.wrap('Customer: ' + c.name); d.bold(false);
+  d.bold(true); d.wrap(pw(c) + ': ' + c.name); d.bold(false);
   if (c.phone) d.sum('Phone', c.phone);
   if (e.method) d.sum('Payment Method', e.method);
   d.rule('=');
@@ -4566,7 +6506,7 @@ function depositEscPos(c, e, opts) {
   return d.footer((isIn
     ? 'Received with thanks. This amount has been credited to your Khata account.'
     : 'This amount has been paid to you and adjusted in your Khata account.') +
-    ' Please keep this receipt for your records.', 'Customer Sign');
+    ' Please keep this receipt for your records.', pw(c) + ' Sign');
 }
 
 /** Short job to confirm the IP, port and ESC/POS support with real paper. */
@@ -4729,11 +6669,12 @@ if (location.hash.startsWith('#inv=')) {
   load();
   save();
   render();
+  licenseGate();                       // activation / licence check (off until a licence server is set)
   // Bills live only on this device: ask the browser not to clear them when storage runs low
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 }
 // Offline support when hosted on http(s) — needed for the installable app / APK
-if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !CLIENT_MODE) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(err => console.warn('Service worker not registered', err));
   });
