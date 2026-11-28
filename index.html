@@ -4971,6 +4971,7 @@ function openScanner(opts) {
   root.innerHTML = `
     <div class="scan-top">
       <div class="scan-title">${esc(opts.title || 'Scan barcode')}</div>
+      <button type="button" class="scan-btn" id="scCam" hidden aria-label="Switch camera">🔄</button>
       <button type="button" class="scan-btn wide" id="scZoom" hidden aria-label="Zoom">1×</button>
       <button type="button" class="scan-btn" id="scTorch" hidden aria-label="Flashlight">🔦</button>
       <button type="button" class="scan-btn" id="scClose" aria-label="Close scanner">✕</button>
@@ -5045,23 +5046,46 @@ function openScanner(opts) {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       return api.status('Camera is not available here. Type the barcode in the box below.');
     }
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }
-      });
-    } catch (e) {
-      return api.status(e && e.name === 'NotAllowedError'
-        ? '📷 Camera permission was refused. Allow the camera for SwiftBill in phone Settings, or type the barcode below.'
-        : 'Could not start the camera (' + esc(e && e.message ? e.message : String(e)) + '). Type the barcode below.');
-    }
-    if (!alive) return stream.getTracks().forEach(t => t.stop());
-    video.srcObject = stream;
-    try { await video.play(); } catch (e) { /* autoplay attribute handles it */ }
-    const track = stream.getVideoTracks()[0];
-    try {
-      const caps = track.getCapabilities ? track.getCapabilities() : {};
-      if (caps.focusMode && caps.focusMode.includes('continuous')) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+    const CAM_KEY = 'swiftbill_scan_camera';
+    let track = null, caps = {}, focusTimer = 0, lastFocusAt = 0;
+    const camLabelNo = d => { const m = /(\d+)/.exec(d.label || ''); return m ? +m[1] : 99; };
+    /** Back cameras (labels exist only after permission). Main lens = lowest number ("camera2 0, facing back"). */
+    const backCams = async () => {
+      try {
+        const all = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+        const back = all.filter(d => /back|rear|environment/i.test(d.label));
+        return (back.length ? back : all).sort((x, y) => camLabelNo(x) - camLabelNo(y));
+      } catch (e) { return []; }
+    };
+    const focus = (x = 0.5, y = 0.5) => {
+      if (!track) return;
+      const modes = caps.focusMode || [];
+      lastFocusAt = Date.now();
+      if (modes.includes('single-shot')) {
+        track.applyConstraints({ advanced: [{ focusMode: 'single-shot', pointsOfInterest: [{ x, y }] }] }).catch(() => {});
+        clearTimeout(focusTimer);
+        focusTimer = setTimeout(() => { if (track && modes.includes('continuous')) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {}); }, 1200);
+      } else if (modes.includes('continuous')) {
+        track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+      }
+    };
+    const start = async deviceId => {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      const video_ = { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } };
+      if (deviceId) video_.deviceId = { exact: deviceId }; else video_.facingMode = { ideal: 'environment' };
+      stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: video_ });
+      if (!alive) { stream.getTracks().forEach(t => t.stop()); return false; }
+      video.srcObject = stream;
+      try { await video.play(); } catch (e) { /* autoplay attribute handles it */ }
+      track = stream.getVideoTracks()[0];
+      caps = {};
+      try { caps = track.getCapabilities ? track.getCapabilities() : {}; } catch (e) { /* older browsers */ }
+      if ((caps.focusMode || []).includes('continuous')) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+      setupZoomTorch();
+      return true;
+    };
+    const setupZoomTorch = () => {
+      $('scZoom').hidden = true; $('scTorch').hidden = true; $('scZoom').textContent = '1×';
       if (caps.zoom && caps.zoom.max > (caps.zoom.min || 1)) {
         // Zoom for small or far barcodes: 1× → 2× → 3× (as far as the camera allows)
         const zMin = caps.zoom.min || 1, steps = [1, 2, 3].map(z => Math.min(caps.zoom.max, Math.max(zMin, z))).filter((z, i, a) => a.indexOf(z) === i);
@@ -5070,7 +5094,7 @@ function openScanner(opts) {
         $('scZoom').onclick = () => {
           zi = (zi + 1) % steps.length;
           $('scZoom').textContent = steps[zi] + '×';
-          track.applyConstraints({ advanced: [{ zoom: steps[zi] }] }).catch(() => {});
+          track.applyConstraints({ advanced: [{ zoom: steps[zi] }] }).then(() => focus()).catch(() => {});
         };
       }
       if (caps.torch) {
@@ -5078,18 +5102,61 @@ function openScanner(opts) {
         $('scTorch').hidden = false;
         $('scTorch').onclick = () => { on = !on; track.applyConstraints({ advanced: [{ torch: on }] }).catch(() => {}); };
       }
-    } catch (e) { /* optional camera features */ }
+    };
+    try {
+      let saved = '';
+      try { saved = localStorage.getItem(CAM_KEY) || ''; } catch (e) { /* private mode */ }
+      try { await start(saved || null); } catch (e) { if (saved) await start(null); else throw e; }
+      if (!alive) return;
+      // Phones with several back lenses: the browser may open the wide / macro lens, which can't
+      // focus on a close barcode. Use the main lens, and let the user switch with 🔄 (remembered).
+      const cams = await backCams();
+      if (!saved && cams.length > 1) {
+        const cur = track.getSettings ? track.getSettings().deviceId : '';
+        if (cams[0].deviceId && cams[0].deviceId !== cur) { try { await start(cams[0].deviceId); } catch (e) { await start(null); } }
+      }
+      if (cams.length > 1) {
+        $('scCam').hidden = false;
+        $('scCam').onclick = async () => {
+          const cur = track && track.getSettings ? track.getSettings().deviceId : '';
+          const i = cams.findIndex(c => c.deviceId === cur);
+          const next = cams[(i + 1) % cams.length];
+          try {
+            await start(next.deviceId);
+            try { localStorage.setItem(CAM_KEY, next.deviceId); } catch (e) { /* private mode */ }
+            toast('Camera ' + ((i + 1) % cams.length + 1) + ' of ' + cams.length + ' — keep the sharpest one');
+          } catch (e) { toast('That camera could not start'); await start(cur || null); }
+        };
+      }
+    } catch (e) {
+      return api.status(e && e.name === 'NotAllowedError'
+        ? '📷 Camera permission was refused. Allow the camera for SwiftBill in phone Settings, or type the barcode below.'
+        : 'Could not start the camera (' + esc(e && e.message ? e.message : String(e)) + '). Type the barcode below.');
+    }
+    if (!alive) return;
+    // Tap the picture to focus there
+    video.addEventListener('click', e => {
+      const r = video.getBoundingClientRect();
+      focus(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)));
+    });
 
     let det;
     try { det = await makeDetector(); }
     catch (e) { return api.status('Scanner could not load: ' + esc(e.message || String(e)) + '. Type the barcode below.'); }
     if (!alive) return;
-    if (!statusEl.dataset.used) api.status('Point the camera at a barcode and hold it steady');
+    if (!statusEl.dataset.used) api.status('Hold the barcode 15–20 cm away. Blurry? Tap the picture to focus, or 🔄 for another lens.');
     const tick = async () => {
       if (!alive) return;
       if (!busy && !paused && video.readyState >= 2) {
         busy = true;
-        try { const read = await det.detect(video, canvas); if (!paused && alive) { if (read) statusEl.dataset.used = '1'; onFrame(read); } }
+        try {
+          const read = await det.detect(video, canvas);
+          if (!paused && alive) {
+            if (read) statusEl.dataset.used = '1';
+            else if (Date.now() - candAt > 2500 && Date.now() - lastFocusAt > 2500) focus();   // nothing found: refocus
+            onFrame(read);
+          }
+        }
         catch (e) { /* a bad frame: keep going */ }
         busy = false;
       }
