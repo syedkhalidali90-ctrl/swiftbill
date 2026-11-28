@@ -4393,8 +4393,10 @@ function upcEtoA(e) {
 function retailCheck(code) {
   code = cleanCode(code);
   if (!/^\d+$/.test(code)) return null;
-  if (code.length === 12 || code.length === 13 || code.length === 14) return gtinOK(code);
-  if (code.length === 8) return gtinOK(code) || (!!upcEtoA(code) && gtinOK(upcEtoA(code)));
+  if (code.length === 13 || code.length === 14) return gtinOK(code);
+  // 8 / 12 digits can also be shop or medicine ITF / Code 128 numbers without a check digit
+  if (code.length === 12) return gtinOK(code) ? true : null;
+  if (code.length === 8) return gtinOK(code) || (!!upcEtoA(code) && gtinOK(upcEtoA(code))) ? true : null;
   return null;
 }
 
@@ -4420,15 +4422,18 @@ function acceptRead(text, format) {
   if (f === 'ean13' || f === 'ean8' || f === 'upca') {
     if (!/^\d+$/.test(code) || !gtinOK(code)) return { code: '', need: 9 };
     if (code.length === 12) code = '0' + code;
-    return { code, need: 2 };
+    return { code, need: f === 'ean8' ? 3 : 2 };            // EAN-8 is short: more easily "seen" inside other codes
   }
   if (f === 'upce') {
     const a = upcEtoA(code);
     return a && gtinOK(a) ? { code, need: 2 } : { code: '', need: 9 };
   }
   if (f === 'itf') {
-    if (!/^\d{14}$/.test(code) || !gtinOK(code)) return { code: '', need: 9 };
-    return { code: code[0] === '0' ? code.slice(1) : code, need: 2 };
+    // Carton ITF-14 with a correct check digit → fast. Pakistani medicine packs also print
+    // their own ITF numbers (e.g. 000944116458 = Reg. no + batch) without a GS1 check digit:
+    // accepted when long enough, but only after 3 identical reads (a partial read is shorter).
+    if (/^\d{14}$/.test(code) && gtinOK(code)) return { code: code[0] === '0' ? code.slice(1) : code, need: 2 };
+    return /^\d{10,}$/.test(code) ? { code, need: 3 } : { code: '', need: 9 };
   }
   if (f === 'code39' || f === 'code93') return code.length >= 4 ? { code, need: 3 } : { code: '', need: 9 };
   if (f === 'datamatrix' || f === 'qrcode') return { code, need: 1 };
