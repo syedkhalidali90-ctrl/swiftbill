@@ -890,11 +890,14 @@
   .scan-view { position: relative; flex: 1; overflow: hidden; }
   .scan-view video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .scan-frame { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
-  .scan-frame i { width: min(78vw, 420px); height: min(34vw, 190px); border: 3px solid #4ade80; border-radius: 16px;
-    box-shadow: 0 0 0 9999px rgba(0,0,0,.45); position: relative; overflow: hidden; }
+  /* Whole picture is scanned; the frame is only a guide and covers almost all of it */
+  .scan-frame { padding: 4%; }
+  .scan-frame i { width: 100%; height: 100%; max-width: 900px; border: 3px solid rgba(74,222,128,.9); border-radius: 18px;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,.18); position: relative; overflow: hidden; }
+  .scan-btn.wide { width: auto; min-width: 48px; padding: 0 10px; font-size: 15px; }
   .scan-frame i::after { content: ''; position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; background: #ef4444; box-shadow: 0 0 8px #ef4444;
     animation: scanline 1.6s ease-in-out infinite; }
-  @keyframes scanline { 0%,100% { transform: translateY(-60px); } 50% { transform: translateY(60px); } }
+  @keyframes scanline { 0%,100% { transform: translateY(-28vh); } 50% { transform: translateY(28vh); } }
   .scan-bottom { background: #fff; color: var(--ink); padding: 12px 14px; padding-bottom: max(12px, env(safe-area-inset-bottom));
     border-radius: 18px 18px 0 0; display: flex; flex-direction: column; gap: 10px; }
   .scan-status { font-size: 14px; line-height: 1.45; min-height: 40px; }
@@ -4340,10 +4343,11 @@ function openOrders(onBack, vendorId) {
    Generated codes: EAN-13 numbers in the in-store range 20xxxxxxxxxxC, printed as
    Code 128 (readable by every camera and handheld scanner).
    ===================================================================== */
-/* Only the symbologies printed on shop products. ITF, Codabar and Code 39/93 have weak or no
-   check digits and "see" random numbers inside other barcodes, so they are not read. */
-const SCAN_FORMATS_NATIVE = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'qr_code'];
-const SCAN_FORMATS_ZXING = ['EAN13', 'EAN8', 'UPCA', 'UPCE', 'Code128', 'QRCode'];
+/* Retail + carton + medicine codes. Weak codes (ITF, Code 39/93) are accepted only with extra
+   checks (ITF only as a 14-digit carton number with a correct check digit; Code 39/93 must be
+   read 3 times in a row), so they can't "invent" numbers inside other barcodes. */
+const SCAN_FORMATS_NATIVE = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'itf', 'code_39', 'code_93', 'data_matrix', 'qr_code'];
+const SCAN_FORMATS_ZXING = ['EAN13', 'EAN8', 'UPCA', 'UPCE', 'Code128', 'ITF', 'Code39', 'Code93', 'DataMatrix', 'QRCode'];
 const ZXING_JS = 'vendor/zxing-reader.js';
 const ZXING_WASM = 'vendor/zxing_reader.wasm';
 
@@ -4394,22 +4398,41 @@ function retailCheck(code) {
   return null;
 }
 
+/** GS1 product number inside a medicine DataMatrix / GS1-128 / GS1 QR: "(01) 14 digits …" → GTIN. */
+function gs1Gtin(raw) {
+  const m = /^(?:\]d2|\]C1|\]Q3|\u001d)?01(\d{14})/.exec(String(raw || ''));
+  if (!m || !gtinOK(m[1])) return '';
+  return m[1][0] === '0' ? m[1].slice(1) : m[1];      // 0 + EAN-13 → the EAN-13 printed on the pack
+}
+
 /**
- * Checks one camera reading. Returns the code to use ('' = ignore this frame).
- * EAN / UPC readings with a wrong check digit are dropped; 12-digit UPC-A is stored as EAN-13.
+ * Checks one camera reading. Returns { code, need } — need = how many frames in a row must agree
+ * ('' code = ignore this frame). Codes with a check digit need 2 frames (fast), codes without 3,
+ * 2-D codes (DataMatrix / QR) have strong error correction and need 1.
+ * EAN / UPC / ITF readings with a wrong check digit are dropped; 12-digit UPC-A is stored as EAN-13.
  */
 function acceptRead(text, format) {
-  let code = cleanCode(text);
-  if (!code) return '';
   const f = String(format || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const gs1 = (f === 'datamatrix' || f === 'code128' || f === 'qrcode') ? gs1Gtin(text) : '';
+  if (gs1) return { code: gs1, need: f === 'code128' ? 2 : 1 };
+  let code = cleanCode(text);
+  if (!code) return { code: '', need: 9 };
   if (f === 'ean13' || f === 'ean8' || f === 'upca') {
-    if (!/^\d+$/.test(code) || !gtinOK(code)) return '';
+    if (!/^\d+$/.test(code) || !gtinOK(code)) return { code: '', need: 9 };
     if (code.length === 12) code = '0' + code;
-  } else if (f === 'upce') {
-    const a = upcEtoA(code);
-    if (!a || !gtinOK(a)) return '';
+    return { code, need: 2 };
   }
-  return code;
+  if (f === 'upce') {
+    const a = upcEtoA(code);
+    return a && gtinOK(a) ? { code, need: 2 } : { code: '', need: 9 };
+  }
+  if (f === 'itf') {
+    if (!/^\d{14}$/.test(code) || !gtinOK(code)) return { code: '', need: 9 };
+    return { code: code[0] === '0' ? code.slice(1) : code, need: 2 };
+  }
+  if (f === 'code39' || f === 'code93') return code.length >= 4 ? { code, need: 3 } : { code: '', need: 9 };
+  if (f === 'datamatrix' || f === 'qrcode') return { code, need: 1 };
+  return { code, need: 2 };                                   // Code 128 (has its own check symbol)
 }
 
 /** Next free in-store EAN-13 (prefix 20). */
@@ -4662,29 +4685,52 @@ function labelsTSPL(jobs, c) {
   return new Uint8Array(bytes);
 }
 
-/** ESC/POS labels (receipt printers): the printer draws the barcode itself (GS k, CODE128). One across. */
+/**
+ * Barcode for ESC/POS: { m, data, modules } — retail numbers use the printer's own EAN-13 / EAN-8 /
+ * UPC-A symbology (same width for every product, best for scanners); anything else is Code 128,
+ * with digits packed in pairs (set C) even when the length is odd.
+ */
+function escposBarcode(code) {
+  const ok = /^\d+$/.test(code) && gtinOK(code);
+  if (ok && code.length === 13) return { m: 67, data: [...code].map(c => c.charCodeAt(0)), modules: 95 };
+  if (ok && code.length === 8) return { m: 68, data: [...code].map(c => c.charCodeAt(0)), modules: 67 };
+  if (ok && code.length === 12) return { m: 65, data: [...code].map(c => c.charCodeAt(0)), modules: 95 };
+  let data;
+  if (/^\d+$/.test(code) && code.length >= 4) {
+    data = [];
+    let i = 0;
+    if (code.length % 2) { data.push(0x7b, 0x42, code.charCodeAt(0)); i = 1; }      // {B one digit
+    data.push(0x7b, 0x43);                                                          // {C pairs
+    for (; i < code.length; i += 2) data.push(+code.substr(i, 2));
+  } else {
+    data = [0x7b, 0x42]; for (const ch of escposAscii(code)) data.push(ch.charCodeAt(0));
+  }
+  const vals = code128Values(code);
+  return { m: 73, data, modules: vals ? vals.length * 11 + 13 : 160 };
+}
+
+/** ESC/POS labels (receipt printers): the printer draws the barcode itself. One across. */
 function labelsEscPos(jobs, opts, c = labelCfg()) {
   const d = escposDoc(opts), GS = 0x1d, ESC = 0x1b, W = d.W;
   const L = labelLayout(c);
+  const paperDots = W >= 48 ? 576 : 384;                 // 80 mm / 58 mm heads (8 dots per mm)
   d.raw(ESC, 0x40, ESC, 0x74, 0);
   jobs.forEach(({ p, copies }) => {
     const code = cleanCode(p.barcode);
-    let data;
-    if (/^\d+$/.test(code) && code.length % 2 === 0 && code.length >= 4) {
-      data = [0x7b, 0x43]; for (let i = 0; i < code.length; i += 2) data.push(+code.substr(i, 2));   // {C pairs
-    } else {
-      data = [0x7b, 0x42]; for (const ch of escposAscii(code)) data.push(ch.charCodeAt(0));           // {B text
-    }
+    const bc = escposBarcode(code);
+    // Widest bars that still fit with a quiet zone: thin 1–2 dot bars print broken on thermal heads
+    const mw = Math.max(2, Math.min(4, Math.floor(paperDots / (bc.modules + 22))));
+    const barH = Math.max(48, Math.min(200, Math.round(L.bc * 8)));
     for (let k = 0; k < copies; k++) {
       d.align(1);
       if (c.shop) d.wrap(S.shopName || 'SWIFTBILL POS');
       if (c.name) { d.bold(true); d.wrap(p.name); d.bold(false); }
       if (c.price && p.rate) { d.size(2, 2); d.line(fmt(p.rate)); d.size(1, 1); }
-      d.raw(GS, 0x68, Math.max(24, Math.min(240, Math.round(L.bc * 8))));   // bar height (dots)
-      d.raw(GS, 0x77, W >= 48 ? 3 : 2);                                       // module width
-      d.raw(GS, 0x48, c.digits ? 2 : 0);                                       // digits below the bars
+      d.raw(GS, 0x68, barH);                     // bar height (dots)
+      d.raw(GS, 0x77, mw);                       // module width (dots)
+      d.raw(GS, 0x48, c.digits ? 2 : 0);         // digits below the bars
       d.raw(GS, 0x66, 0);
-      d.raw(GS, 0x6b, 73, data.length, ...data);
+      d.raw(GS, 0x6b, bc.m, bc.data.length, ...bc.data);
       d.line();
       d.align(0);
       d.rule('-');
@@ -4920,6 +4966,7 @@ function openScanner(opts) {
   root.innerHTML = `
     <div class="scan-top">
       <div class="scan-title">${esc(opts.title || 'Scan barcode')}</div>
+      <button type="button" class="scan-btn wide" id="scZoom" hidden aria-label="Zoom">1×</button>
       <button type="button" class="scan-btn" id="scTorch" hidden aria-label="Flashlight">🔦</button>
       <button type="button" class="scan-btn" id="scClose" aria-label="Close scanner">✕</button>
     </div>
@@ -4942,8 +4989,8 @@ function openScanner(opts) {
   // A camera reading is used only after the SAME code is read in several frames in a row
   // (one blurry frame can decode as a different, still "valid" number). After that the code
   // is locked: holding the camera on it does nothing until it has left the view for a moment.
-  let cand = '', candN = 0, candAt = 0, lock = '', lockAt = 0, need = 3;
-  const LOCK_MS = 1300, CAND_MS = 650;
+  let cand = '', candN = 0, candAt = 0, lock = '', lockAt = 0, need = 2;
+  const LOCK_MS = 1300, CAND_MS = 1200;
   const api = {
     status: html => { statusEl.innerHTML = html; },
     close: () => closeScanner(),
@@ -4964,12 +5011,13 @@ function openScanner(opts) {
   const onFrame = read => {
     const now = Date.now();
     if (lock && now - lockAt > LOCK_MS) lock = '';
-    const code = read ? acceptRead(read.text, read.format) : '';
+    const r = read ? acceptRead(read.text, read.format) : { code: '' };
+    const code = r.code;
     if (!code) { if (now - candAt > CAND_MS) { cand = ''; candN = 0; } return; }
     if (code === lock) { lockAt = now; return; }            // the same label is still in front of the camera
     if (code === cand && now - candAt < CAND_MS) candN++; else { cand = code; candN = 1; }
     candAt = now;
-    if (candN < need) return;
+    if (candN < Math.max(1, r.need || need)) return;
     cand = ''; candN = 0;
     accept(code);
   };
@@ -4995,7 +5043,7 @@ function openScanner(opts) {
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }
       });
     } catch (e) {
       return api.status(e && e.name === 'NotAllowedError'
@@ -5009,6 +5057,17 @@ function openScanner(opts) {
     try {
       const caps = track.getCapabilities ? track.getCapabilities() : {};
       if (caps.focusMode && caps.focusMode.includes('continuous')) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+      if (caps.zoom && caps.zoom.max > (caps.zoom.min || 1)) {
+        // Zoom for small or far barcodes: 1× → 2× → 3× (as far as the camera allows)
+        const zMin = caps.zoom.min || 1, steps = [1, 2, 3].map(z => Math.min(caps.zoom.max, Math.max(zMin, z))).filter((z, i, a) => a.indexOf(z) === i);
+        let zi = 0;
+        $('scZoom').hidden = false;
+        $('scZoom').onclick = () => {
+          zi = (zi + 1) % steps.length;
+          $('scZoom').textContent = steps[zi] + '×';
+          track.applyConstraints({ advanced: [{ zoom: steps[zi] }] }).catch(() => {});
+        };
+      }
       if (caps.torch) {
         let on = false;
         $('scTorch').hidden = false;
@@ -5020,7 +5079,6 @@ function openScanner(opts) {
     try { det = await makeDetector(); }
     catch (e) { return api.status('Scanner could not load: ' + esc(e.message || String(e)) + '. Type the barcode below.'); }
     if (!alive) return;
-    need = det.engine === 'native' ? 3 : 2;
     if (!statusEl.dataset.used) api.status('Point the camera at a barcode and hold it steady');
     const tick = async () => {
       if (!alive) return;
@@ -5030,7 +5088,7 @@ function openScanner(opts) {
         catch (e) { /* a bad frame: keep going */ }
         busy = false;
       }
-      setTimeout(tick, det.engine === 'native' ? 90 : 160);
+      setTimeout(tick, det.engine === 'native' ? 25 : 60);
     };
     tick();
   })();
