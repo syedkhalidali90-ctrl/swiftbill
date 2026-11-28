@@ -890,11 +890,14 @@
   .scan-view { position: relative; flex: 1; overflow: hidden; }
   .scan-view video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .scan-frame { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
-  .scan-frame i { width: min(78vw, 420px); height: min(34vw, 190px); border: 3px solid #4ade80; border-radius: 16px;
-    box-shadow: 0 0 0 9999px rgba(0,0,0,.45); position: relative; overflow: hidden; }
+  /* Whole picture is scanned; the frame is only a guide and covers almost all of it */
+  .scan-frame { padding: 4%; }
+  .scan-frame i { width: 100%; height: 100%; max-width: 900px; border: 3px solid rgba(74,222,128,.9); border-radius: 18px;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,.18); position: relative; overflow: hidden; }
+  .scan-btn.wide { width: auto; min-width: 48px; padding: 0 10px; font-size: 15px; }
   .scan-frame i::after { content: ''; position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; background: #ef4444; box-shadow: 0 0 8px #ef4444;
     animation: scanline 1.6s ease-in-out infinite; }
-  @keyframes scanline { 0%,100% { transform: translateY(-60px); } 50% { transform: translateY(60px); } }
+  @keyframes scanline { 0%,100% { transform: translateY(-28vh); } 50% { transform: translateY(28vh); } }
   .scan-bottom { background: #fff; color: var(--ink); padding: 12px 14px; padding-bottom: max(12px, env(safe-area-inset-bottom));
     border-radius: 18px 18px 0 0; display: flex; flex-direction: column; gap: 10px; }
   .scan-status { font-size: 14px; line-height: 1.45; min-height: 40px; }
@@ -914,6 +917,39 @@
   #printArea .lbls .lbl-price { font-size: calc(20 * var(--u)); }
   #printArea .lbls .lbl-bc svg { width: 100%; max-width: none; height: calc(64 * var(--u)); }
   #printArea .lbls .lbl-code { font-size: calc(13 * var(--u)); }
+  #scanRoot.paused .scan-frame i { border-color: #f59e0b; }
+  #scDone { flex: none; min-height: 46px; }
+  #scanRoot.paused .scan-frame i::after { display: none; }
+  /* Labels: sizes are real millimetres (same on screen, PDF and paper) */
+  .lrow { display: flex; align-items: flex-start; background: #fff; color: #000; overflow: hidden; box-sizing: border-box; }
+  .lb { flex: none; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; text-align: center;
+    background: #fff; color: #000; font-family: "SB Receipt", Roboto, Arial, sans-serif; }
+  .lb-t { flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 800; }
+  .lb-name2 { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .lb-shop { font-weight: 700; letter-spacing: .03em; }
+  .lb-price { font-weight: 900; }
+  .lb-dig { font-weight: 700; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+  .lb-bc { flex: none; }
+  .lb-bc svg { display: block; width: 100%; height: 100%; }
+  #printArea .lsheet .lrow { break-after: page; page-break-after: always; break-inside: avoid; }
+  #printArea .lsheet .lrow:last-child { break-after: auto; page-break-after: auto; }
+  .lbl-prev2 { margin: 10px 0 0; padding: 10px 8px 6px; border-radius: 12px; background: #e2e8f0; overflow: hidden; }
+  .lbl-prev2 .lbp-in { width: max-content; margin: 0 auto; }
+  .lbl-prev2 .lrow { background: transparent; }
+  .lbl-prev2 .lb { box-shadow: 0 0 0 .3mm #94a3b8; border-radius: 1mm; }
+  .lbp-cap { text-align: center; font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .lb-set { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; background: var(--card); }
+  .lb-set > summary { cursor: pointer; font-weight: 800; font-size: 14px; }
+  .lb-set > summary span { font-weight: 600; color: var(--muted); font-size: 12px; }
+  .lb-set .field { margin: 10px 0 0; }
+  .lb-set select, .lb-set input[type=number] { width: 100%; height: 42px; border: 1px solid var(--line); border-radius: 10px; padding: 0 10px; font-size: 15px; background: #fff; }
+  .lb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 0 10px; }
+  .lb-grid .lbf label { font-size: 11px; }
+  .lb-chks { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 14px; font-weight: 600; }
+  .lb-chk { display: inline-flex; align-items: center; gap: 6px; }
+  .lb-chk input { width: 18px; height: 18px; }
+  .lb-adv { margin-top: 10px; font-size: 13px; }
+  .lb-adv > summary { cursor: pointer; font-weight: 700; color: var(--muted); }
   .avatar.ven { background: #fef3c7; color: #92400e; }
   .party-tabs button { font-size: 12px; letter-spacing: .04em; }
   .kind-seg { margin-bottom: 0; }
@@ -3812,6 +3848,11 @@ function openProductForm(p, opts = {}) {
         const code = cleanCode(bcEl.value);
         const taken = code && bcTaken(code);
         if (taken) { toast(`Barcode already used by “${taken.name}”`); return bcEl.focus(); }
+        if (code && retailCheck(code) === false && bcEl.dataset.keepBad !== code) {
+          bcEl.dataset.keepBad = code;
+          toast('⚠ This barcode number looks misread (wrong check digit). Scan again, or tap Save again to keep it.');
+          return bcEl.focus();
+        }
         const category = ensureCategory(catEl.value);
         let prod = p;
         if (isNew) {
@@ -4302,8 +4343,11 @@ function openOrders(onBack, vendorId) {
    Generated codes: EAN-13 numbers in the in-store range 20xxxxxxxxxxC, printed as
    Code 128 (readable by every camera and handheld scanner).
    ===================================================================== */
-const SCAN_FORMATS_NATIVE = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'code_93', 'itf', 'codabar', 'qr_code'];
-const SCAN_FORMATS_ZXING = ['EAN13', 'EAN8', 'UPCA', 'UPCE', 'Code128', 'Code39', 'Code93', 'ITF', 'Codabar', 'QRCode'];
+/* Retail + carton + medicine codes. Weak codes (ITF, Code 39/93) are accepted only with extra
+   checks (ITF only as a 14-digit carton number with a correct check digit; Code 39/93 must be
+   read 3 times in a row), so they can't "invent" numbers inside other barcodes. */
+const SCAN_FORMATS_NATIVE = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'itf', 'code_39', 'code_93', 'data_matrix', 'qr_code'];
+const SCAN_FORMATS_ZXING = ['EAN13', 'EAN8', 'UPCA', 'UPCE', 'Code128', 'ITF', 'Code39', 'Code93', 'DataMatrix', 'QRCode'];
 const ZXING_JS = 'vendor/zxing-reader.js';
 const ZXING_WASM = 'vendor/zxing_reader.wasm';
 
@@ -4323,6 +4367,77 @@ function ean13Check(d12) {
   let s = 0;
   for (let i = 0; i < 12; i++) s += (+d12[i]) * (i % 2 ? 3 : 1);
   return String((10 - (s % 10)) % 10);
+}
+
+/** GS1 check digit for any length (EAN-8, UPC-A, EAN-13, GTIN-14): true when the last digit is right. */
+function gtinOK(code) {
+  let sum = 0;
+  for (let i = code.length - 2, w = 3; i >= 0; i--, w = 4 - w) sum += (+code[i]) * w;
+  return (10 - (sum % 10)) % 10 === +code[code.length - 1];
+}
+/** UPC-E (8 digits) → UPC-A (12 digits), or '' if it is not a UPC-E number. */
+function upcEtoA(e) {
+  if (!/^[01]\d{7}$/.test(e)) return '';
+  const d = e.slice(1, 7), last = +d[5];
+  let body;
+  if (last <= 2) body = d[0] + d[1] + d[5] + '0000' + d[2] + d[3] + d[4];
+  else if (last === 3) body = d[0] + d[1] + d[2] + '00000' + d[3] + d[4];
+  else if (last === 4) body = d[0] + d[1] + d[2] + d[3] + '00000' + d[4];
+  else body = d.slice(0, 5) + '0000' + d[5];
+  return e[0] + body + e[7];
+}
+/**
+ * false when a retail number's check digit is wrong (a misread or a typo), true when right,
+ * null when the code is not a retail number (text, Code 128 ids, odd lengths).
+ */
+function retailCheck(code) {
+  code = cleanCode(code);
+  if (!/^\d+$/.test(code)) return null;
+  if (code.length === 13 || code.length === 14) return gtinOK(code);
+  // 8 / 12 digits can also be shop or medicine ITF / Code 128 numbers without a check digit
+  if (code.length === 12) return gtinOK(code) ? true : null;
+  if (code.length === 8) return gtinOK(code) || (!!upcEtoA(code) && gtinOK(upcEtoA(code))) ? true : null;
+  return null;
+}
+
+/** GS1 product number inside a medicine DataMatrix / GS1-128 / GS1 QR: "(01) 14 digits …" → GTIN. */
+function gs1Gtin(raw) {
+  const m = /^(?:\]d2|\]C1|\]Q3|\u001d)?01(\d{14})/.exec(String(raw || ''));
+  if (!m || !gtinOK(m[1])) return '';
+  return m[1][0] === '0' ? m[1].slice(1) : m[1];      // 0 + EAN-13 → the EAN-13 printed on the pack
+}
+
+/**
+ * Checks one camera reading. Returns { code, need } — need = how many frames in a row must agree
+ * ('' code = ignore this frame). Codes with a check digit need 2 frames (fast), codes without 3,
+ * 2-D codes (DataMatrix / QR) have strong error correction and need 1.
+ * EAN / UPC / ITF readings with a wrong check digit are dropped; 12-digit UPC-A is stored as EAN-13.
+ */
+function acceptRead(text, format) {
+  const f = String(format || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const gs1 = (f === 'datamatrix' || f === 'code128' || f === 'qrcode') ? gs1Gtin(text) : '';
+  if (gs1) return { code: gs1, need: f === 'code128' ? 2 : 1 };
+  let code = cleanCode(text);
+  if (!code) return { code: '', need: 9 };
+  if (f === 'ean13' || f === 'ean8' || f === 'upca') {
+    if (!/^\d+$/.test(code) || !gtinOK(code)) return { code: '', need: 9 };
+    if (code.length === 12) code = '0' + code;
+    return { code, need: f === 'ean8' ? 3 : 2 };            // EAN-8 is short: more easily "seen" inside other codes
+  }
+  if (f === 'upce') {
+    const a = upcEtoA(code);
+    return a && gtinOK(a) ? { code, need: 2 } : { code: '', need: 9 };
+  }
+  if (f === 'itf') {
+    // Carton ITF-14 with a correct check digit → fast. Pakistani medicine packs also print
+    // their own ITF numbers (e.g. 000944116458 = Reg. no + batch) without a GS1 check digit:
+    // accepted when long enough, but only after 3 identical reads (a partial read is shorter).
+    if (/^\d{14}$/.test(code) && gtinOK(code)) return { code: code[0] === '0' ? code.slice(1) : code, need: 2 };
+    return /^\d{10,}$/.test(code) ? { code, need: 3 } : { code: '', need: 9 };
+  }
+  if (f === 'code39' || f === 'code93') return code.length >= 4 ? { code, need: 3 } : { code: '', need: 9 };
+  if (f === 'datamatrix' || f === 'qrcode') return { code, need: 1 };
+  return { code, need: 2 };                                   // Code 128 (has its own check symbol)
 }
 
 /** Next free in-store EAN-13 (prefix 20). */
@@ -4386,40 +4501,241 @@ function code128SVG(text, { module = 2, height = 56, quiet = 10 } = {}) {
   return `<svg class="bc-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${height}" width="${total}" height="${height}" preserveAspectRatio="none" shape-rendering="crispEdges" aria-label="Barcode ${esc(text)}"><rect width="${total}" height="${height}" fill="#fff"/><g fill="#000">${rects}</g></svg>`;
 }
 
-/* ---------- Labels ---------- */
-function labelHTML(p) {
-  return `
-    <div class="lbl">
-      <div class="lbl-shop">${esc(S.shopName || 'SWIFTBILL POS')}</div>
-      <div class="lbl-name">${esc(p.name)}</div>
-      ${p.rate ? `<div class="lbl-price">${fmt(p.rate)}</div>` : ''}
-      <div class="lbl-bc">${code128SVG(p.barcode, { module: 2, height: 60 })}</div>
-      <div class="lbl-code">${esc(p.barcode)}</div>
-    </div>`;
+/* ---------- Labels ----------
+   Size, gap, stickers across (1–3), barcode height and what to show are saved in S.labelSet.
+   Three outputs, all from the same settings:
+   • Print (browser / PDF): one page per row of stickers, page = exact row size in mm.
+   • Label printer (TSPL — Xprinter, TSC, Gprinter…): SIZE / GAP / BARCODE commands, so the
+     printer stops at every gap. Names in Urdu etc. are sent as a small picture.
+   • Receipt printer (ESC/POS): one label under the other on the roll, as before. */
+const LABEL_DEFAULT = { w: 38, h: 25, gap: 2, cols: 1, colGap: 2, bcH: 0, shop: true, name: true, price: true, digits: true,
+  lang: 'escpos', offX: 0, offY: 0, flip: false, density: 8 };
+const LABEL_PRESETS = [
+  { t: '1 sticker · 38 × 25 mm', w: 38, h: 25, cols: 1 },
+  { t: '1 sticker · 50 × 25 mm', w: 50, h: 25, cols: 1 },
+  { t: '1 sticker · 50 × 30 mm', w: 50, h: 30, cols: 1 },
+  { t: '1 sticker · 40 × 30 mm', w: 40, h: 30, cols: 1 },
+  { t: '2 stickers · 38 × 25 mm', w: 38, h: 25, cols: 2 },
+  { t: '2 stickers · 50 × 25 mm', w: 50, h: 25, cols: 2 },
+  { t: '3 stickers · 32 × 25 mm', w: 32, h: 25, cols: 3 },
+  { t: '3 stickers · 30 × 20 mm', w: 30, h: 20, cols: 3 }
+];
+const clampN = (v, lo, hi, d) => { const n = parseFloat(v); return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
+
+/** Saved label settings, every value checked. */
+function labelCfg(raw = S.labelSet) {
+  const r = Object.assign({}, LABEL_DEFAULT, raw || {}), D = LABEL_DEFAULT;
+  return {
+    w: clampN(r.w, 15, 110, D.w), h: clampN(r.h, 10, 100, D.h), gap: clampN(r.gap, 0, 10, D.gap),
+    cols: Math.round(clampN(r.cols, 1, 3, 1)), colGap: clampN(r.colGap, 0, 10, D.colGap), bcH: clampN(r.bcH, 0, 80, 0),
+    shop: r.shop !== false, name: r.name !== false, price: r.price !== false, digits: r.digits !== false,
+    lang: r.lang === 'tspl' ? 'tspl' : 'escpos', offX: clampN(r.offX, -10, 10, 0), offY: clampN(r.offY, -10, 10, 0),
+    flip: !!r.flip, density: Math.round(clampN(r.density, 1, 15, 8))
+  };
+}
+const labelRowW = c => +(c.cols * c.w + (c.cols - 1) * c.colGap).toFixed(2);
+
+/** Line heights (mm) inside one sticker; the barcode gets what is left unless its height is set. */
+function labelLayout(c) {
+  const k = Math.max(0.8, Math.min(1.6, c.h / 25)), pad = 1;
+  const L = { pad, shop: c.shop ? 2.5 * k : 0, name: c.name ? 3.1 * k : 0, nameLines: 1, price: c.price ? 4 * k : 0, dig: c.digits ? 2.7 * k : 0 };
+  const free = () => c.h - 2 * pad - L.shop - L.name - L.price - L.dig - 0.4;
+  if (c.name && !c.bcH && free() > 16 * k) { L.name *= 2; L.nameLines = 2; }   // tall label: name may use 2 lines
+  L.bc = c.bcH > 0 ? c.bcH : Math.max(3, free());
+  L.over = 2 * pad + L.shop + L.name + L.price + L.dig + L.bc > c.h + 0.05;
+  return L;
 }
 
-/** ESC/POS labels: the printer draws the barcode itself (GS k, CODE128). */
-function labelsEscPos(jobs, opts) {
+function labelBoxHTML(p, c, L) {
+  const line = (cls, h, txt, extra = '') => h ? `<div class="lb-t ${cls}" style="height:${h.toFixed(2)}mm;line-height:${(h / (cls === 'lb-name' ? L.nameLines : 1)).toFixed(2)}mm;font-size:${(h / (cls === 'lb-name' ? L.nameLines : 1) * 0.8).toFixed(2)}mm${extra}">${txt}</div>` : '';
+  const code = cleanCode(p.barcode);
+  return `<div class="lb" style="width:${c.w}mm;height:${c.h}mm;padding:${L.pad}mm">` +
+    line('lb-shop', L.shop, esc(S.shopName || 'SWIFTBILL POS')) +
+    line('lb-name' + (L.nameLines > 1 ? ' lb-name2' : ''), L.name, esc(p.name)) +
+    line('lb-price', L.price, p.rate ? esc(fmt(p.rate)) : '') +
+    `<div class="lb-bc" style="height:${L.bc.toFixed(2)}mm">${code128SVG(code, { module: 2, height: 60, quiet: 8 })}</div>` +
+    line('lb-dig', L.dig, esc(code)) + '</div>';
+}
+
+/** Products × copies → rows of c.cols stickers. */
+function labelRows(jobs, c) {
+  const all = [];
+  jobs.forEach(({ p, copies }) => { for (let k = 0; k < copies; k++) all.push(p); });
+  const rows = [];
+  for (let i = 0; i < all.length; i += c.cols) rows.push(all.slice(i, i + c.cols));
+  return rows;
+}
+
+function labelRowHTML(row, c, L) {
+  return `<div class="lrow" style="width:${labelRowW(c)}mm;height:${c.h}mm;gap:${c.colGap}mm">${row.map(p => labelBoxHTML(p, c, L)).join('')}</div>`;
+}
+
+/** Old single preview (kept for other screens). */
+function labelHTML(p) {
+  const c = labelCfg();
+  return labelRowHTML([p], Object.assign({}, c, { cols: 1 }), labelLayout(c));
+}
+
+/** Browser print: every row of stickers is one page of exactly that size. */
+function printLabelPages(jobs, c) {
+  if (printPending) return;
+  printPending = true;
+  const L = labelLayout(c), W = labelRowW(c);
+  const pa = $('printArea');
+  pa.style.width = W + 'mm';
+  pa.innerHTML = `<div class="lsheet">${labelRows(jobs, c).map(r => labelRowHTML(r, c, L)).join('')}</div>`;
+  let st = $('pageSizeStyle');
+  if (!st) { st = document.createElement('style'); st.id = 'pageSizeStyle'; document.head.appendChild(st); }
+  st.textContent = `@page { size: ${W}mm ${c.h}mm; margin: 0; }`;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    try { window.print(); } finally { setTimeout(() => { printPending = false; }, 800); }
+  }));
+}
+
+/* ---------- TSPL (label printers) ---------- */
+const TSPL_FONTS = [['5', 32, 48], ['4', 24, 32], ['3', 16, 24], ['2', 12, 20], ['1', 8, 12]];   // name, char width, height (dots)
+
+/** Text drawn as a 1-bit picture (for Urdu and other non-ASCII names). TSPL: bit 0 = black. */
+function tsplTextBitmap(text, wDots, hDots, bold) {
+  const cv = document.createElement('canvas');
+  const wb = Math.ceil(wDots / 8);
+  cv.width = wb * 8; cv.height = hDots;
+  const g = cv.getContext('2d', { willReadFrequently: true });
+  g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, hDots);
+  g.fillStyle = '#000'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  let px = Math.floor(hDots * 0.86);
+  const font = () => `${bold ? 800 : 600} ${px}px "SB Receipt", Roboto, Arial, sans-serif`;
+  g.font = font();
+  while (px > 8 && g.measureText(text).width > wDots) { px--; g.font = font(); }
+  g.fillText(text, cv.width / 2, hDots / 2 + 1, wDots);
+  const img = g.getImageData(0, 0, cv.width, hDots).data;
+  const out = new Uint8Array(wb * hDots).fill(0xff);
+  for (let y = 0; y < hDots; y++) for (let x = 0; x < cv.width; x++) {
+    const i = (y * cv.width + x) * 4;
+    if (img[i + 3] > 0 && (img[i] + img[i + 1] + img[i + 2]) < 384) out[y * wb + (x >> 3)] &= ~(0x80 >> (x & 7));
+  }
+  return { wb, h: hDots, data: out };
+}
+
+function labelsTSPL(jobs, c) {
+  const bytes = [];
+  const put = s => { for (let i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i) & 0xff); };
+  const cmd = s => put(s + '\r\n');
+  const dots = mm => Math.round(mm * 8);                  // 203 dpi
+  const q = s => String(s).replace(/"/g, "'");
+  const L = labelLayout(c), lw = dots(c.w), pad = dots(L.pad);
+  const ascii = s => /^[\x20-\x7e]*$/.test(s);
+
+  /** One text line centred in a box of the label: printer font for plain text, picture otherwise. */
+  const text = (x0, y, hMm, s, bold) => {
+    const h = dots(hMm), avail = lw - 2 * pad;
+    if (!s || h < 8) return;
+    if (ascii(s)) {
+      let f = TSPL_FONTS.find(([, cw, ch]) => ch <= h - 2 && cw * s.length <= avail) ||
+              TSPL_FONTS.find(([, , ch]) => ch <= h - 2) || TSPL_FONTS[TSPL_FONTS.length - 1];
+      const [name, cw, ch] = f;
+      const max = Math.max(1, Math.floor(avail / cw));
+      const t = s.length > max ? s.slice(0, max - 1) + '.' : s;
+      const x = x0 + Math.round((lw - cw * t.length) / 2);
+      cmd(`TEXT ${x},${y + Math.max(0, Math.round((h - ch) / 2))},"${name}",0,1,1,"${q(t)}"`);
+    } else {
+      const bm = tsplTextBitmap(s, avail, h, bold);
+      put(`BITMAP ${x0 + pad},${y},${bm.wb},${bm.h},0,`);
+      bm.data.forEach(b => bytes.push(b));
+      put('\r\n');
+    }
+  };
+
+  cmd(`SIZE ${labelRowW(c)} mm,${c.h} mm`);
+  cmd(`GAP ${c.gap} mm,0 mm`);
+  cmd(`DIRECTION ${c.flip ? 0 : 1}`);
+  cmd('REFERENCE 0,0');
+  cmd(`DENSITY ${c.density}`);
+  cmd('SET TEAR ON');
+
+  // Rows that look the same are printed with one PRINT n (fast, tiny job)
+  const rows = labelRows(jobs, c), groups = [];
+  rows.forEach(r => {
+    const sig = r.map(p => p.key).join('\u0001');
+    const g = groups[groups.length - 1];
+    if (g && g.sig === sig) g.n++; else groups.push({ sig, row: r, n: 1 });
+  });
+  groups.forEach(({ row, n }) => {
+    cmd('CLS');
+    row.forEach((p, i) => {
+      const x0 = dots(i * (c.w + c.colGap) + c.offX);
+      let y = dots(c.offY) + pad;
+      const code = cleanCode(p.barcode);
+      if (c.shop) { text(x0, y, L.shop, S.shopName || 'SWIFTBILL POS', false); y += dots(L.shop); }
+      if (c.name) {
+        if (L.nameLines > 1 && ascii(p.name)) {
+          // two lines: split at a space near the middle
+          const words = p.name.split(/\s+/); let a = '';
+          while (words.length && (a + ' ' + words[0]).trim().length <= Math.ceil(p.name.length / 2)) a = (a + ' ' + words.shift()).trim();
+          if (!a) a = words.shift() || '';
+          text(x0, y, L.name / 2, a, true); text(x0, y + dots(L.name / 2), L.name / 2, words.join(' '), true);
+        } else text(x0, y, L.name, p.name, true);
+        y += dots(L.name);
+      }
+      if (c.price) { if (p.rate) text(x0, y, L.price, fmt(p.rate), true); y += dots(L.price); }
+      const modules = (code128Widths(code) || '').split('').reduce((s, d) => s + +d, 0) || 100;
+      const narrow = Math.max(1, Math.min(4, Math.floor((lw - 2 * pad) / (modules + 16))));
+      const bx = x0 + Math.max(0, Math.round((lw - modules * narrow) / 2));
+      cmd(`BARCODE ${bx},${y},"128",${Math.max(16, dots(L.bc))},0,0,${narrow},${narrow},"${q(code)}"`);
+      y += dots(L.bc);
+      if (c.digits) text(x0, y + 1, L.dig, code, false);
+    });
+    cmd(`PRINT 1,${n}`);
+  });
+  return new Uint8Array(bytes);
+}
+
+/**
+ * Barcode for ESC/POS: { m, data, modules } — retail numbers use the printer's own EAN-13 / EAN-8 /
+ * UPC-A symbology (same width for every product, best for scanners); anything else is Code 128,
+ * with digits packed in pairs (set C) even when the length is odd.
+ */
+function escposBarcode(code) {
+  const ok = /^\d+$/.test(code) && gtinOK(code);
+  if (ok && code.length === 13) return { m: 67, data: [...code].map(c => c.charCodeAt(0)), modules: 95 };
+  if (ok && code.length === 8) return { m: 68, data: [...code].map(c => c.charCodeAt(0)), modules: 67 };
+  if (ok && code.length === 12) return { m: 65, data: [...code].map(c => c.charCodeAt(0)), modules: 95 };
+  let data;
+  if (/^\d+$/.test(code) && code.length >= 4) {
+    data = [];
+    let i = 0;
+    if (code.length % 2) { data.push(0x7b, 0x42, code.charCodeAt(0)); i = 1; }      // {B one digit
+    data.push(0x7b, 0x43);                                                          // {C pairs
+    for (; i < code.length; i += 2) data.push(+code.substr(i, 2));
+  } else {
+    data = [0x7b, 0x42]; for (const ch of escposAscii(code)) data.push(ch.charCodeAt(0));
+  }
+  const vals = code128Values(code);
+  return { m: 73, data, modules: vals ? vals.length * 11 + 13 : 160 };
+}
+
+/** ESC/POS labels (receipt printers): the printer draws the barcode itself. One across. */
+function labelsEscPos(jobs, opts, c = labelCfg()) {
   const d = escposDoc(opts), GS = 0x1d, ESC = 0x1b, W = d.W;
+  const L = labelLayout(c);
+  const paperDots = W >= 48 ? 576 : 384;                 // 80 mm / 58 mm heads (8 dots per mm)
   d.raw(ESC, 0x40, ESC, 0x74, 0);
   jobs.forEach(({ p, copies }) => {
     const code = cleanCode(p.barcode);
-    let data;
-    if (/^\d+$/.test(code) && code.length % 2 === 0 && code.length >= 4) {
-      data = [0x7b, 0x43]; for (let i = 0; i < code.length; i += 2) data.push(+code.substr(i, 2));   // {C pairs
-    } else {
-      data = [0x7b, 0x42]; for (const ch of escposAscii(code)) data.push(ch.charCodeAt(0));           // {B text
-    }
+    const bc = escposBarcode(code);
+    // Widest bars that still fit with a quiet zone: thin 1–2 dot bars print broken on thermal heads
+    const mw = Math.max(2, Math.min(4, Math.floor(paperDots / (bc.modules + 22))));
+    const barH = Math.max(48, Math.min(200, Math.round(L.bc * 8)));
     for (let k = 0; k < copies; k++) {
       d.align(1);
-      d.wrap(S.shopName || 'SWIFTBILL POS');
-      d.bold(true); d.wrap(p.name); d.bold(false);
-      if (p.rate) { d.size(2, 2); d.line(fmt(p.rate)); d.size(1, 1); }
-      d.raw(GS, 0x68, 70);                       // bar height (dots)
-      d.raw(GS, 0x77, W >= 48 ? 3 : 2);          // module width
-      d.raw(GS, 0x48, 2);                        // digits below the bars
+      if (c.shop) d.wrap(S.shopName || 'SWIFTBILL POS');
+      if (c.name) { d.bold(true); d.wrap(p.name); d.bold(false); }
+      if (c.price && p.rate) { d.size(2, 2); d.line(fmt(p.rate)); d.size(1, 1); }
+      d.raw(GS, 0x68, barH);                     // bar height (dots)
+      d.raw(GS, 0x77, mw);                       // module width (dots)
+      d.raw(GS, 0x48, c.digits ? 2 : 0);         // digits below the bars
       d.raw(GS, 0x66, 0);
-      d.raw(GS, 0x6b, 73, data.length, ...data);
+      d.raw(GS, 0x6b, bc.m, bc.data.length, ...bc.data);
       d.line();
       d.align(0);
       d.rule('-');
@@ -4430,20 +4746,53 @@ function labelsEscPos(jobs, opts) {
   return new Uint8Array(d.bytes);
 }
 
+function labelSettingsHTML(c) {
+  const num = (id, label, v, step = '0.5') => `<div class="field lbf"><label for="${id}">${label}</label>
+    <input id="${id}" type="number" inputmode="decimal" step="${step}" value="${v}" /></div>`;
+  const chk = (id, label, on) => `<label class="lb-chk"><input type="checkbox" id="${id}" ${on ? 'checked' : ''}/> ${label}</label>`;
+  const presetIdx = LABEL_PRESETS.findIndex(x => x.w === c.w && x.h === c.h && x.cols === c.cols);
+  return `
+    <div class="field"><label for="lsPreset">STICKER ROLL</label>
+      <select id="lsPreset">${LABEL_PRESETS.map((x, i) => `<option value="${i}" ${i === presetIdx ? 'selected' : ''}>${x.t}</option>`).join('')}
+        <option value="-1" ${presetIdx < 0 ? 'selected' : ''}>Custom size</option></select></div>
+    <div class="lb-grid">
+      ${num('lsW', 'WIDTH (mm)', c.w)}${num('lsH', 'HEIGHT (mm)', c.h)}
+      <div class="field lbf"><label for="lsCols">STICKERS ACROSS</label>
+        <select id="lsCols">${[1, 2, 3].map(n => `<option value="${n}" ${n === c.cols ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      ${num('lsGap', 'GAP DOWN (mm)', c.gap)}${num('lsColGap', 'GAP ACROSS (mm)', c.colGap)}
+      ${num('lsBcH', 'BARCODE HEIGHT (mm, 0 = auto)', c.bcH)}
+    </div>
+    <div class="lb-chks">${chk('lsPrice', 'Price', c.price)}${chk('lsName', 'Product name', c.name)}${chk('lsShop', 'Shop name', c.shop)}${chk('lsDig', 'Barcode number', c.digits)}</div>
+    <div class="field"><label for="lsLang">BLUETOOTH / WI-FI PRINTER TYPE</label>
+      <select id="lsLang">
+        <option value="tspl" ${c.lang === 'tspl' ? 'selected' : ''}>Label / sticker printer (TSPL — Xprinter, TSC, Gprinter)</option>
+        <option value="escpos" ${c.lang === 'escpos' ? 'selected' : ''}>Receipt printer (ESC/POS) — one label under the other</option>
+      </select>
+      <div class="hint" id="lsLangHint"></div></div>
+    <details class="lb-adv"><summary>Fine-tune (if the print is shifted)</summary>
+      <div class="lb-grid">${num('lsOffX', 'MOVE RIGHT (mm, − = left)', c.offX)}${num('lsOffY', 'MOVE DOWN (mm, − = up)', c.offY)}
+        ${num('lsDen', 'DARKNESS (1–15)', c.density, '1')}</div>
+      <div class="lb-chks">${chk('lsFlip', 'Print upside down (turn 180°)', c.flip)}</div>
+    </details>`;
+}
+
 /**
  * Print labels: pick products and copies. Products without a barcode get one generated first.
  * preset: [{ key, copies }]
  */
 function openLabels(onBack, preset) {
   const picks = new Map((preset || []).map(x => [x.key, x.copies]));
+  let cfg = labelCfg();
   openModal({
     title: 'Print Barcode Labels',
     back: onBack,
     body: `
-      <p class="muted" style="font-size:13px;margin:0 0 10px">Enter how many labels to print for each product. Products without a barcode get one automatically.</p>
+      <details class="lb-set" id="lbSet"><summary>⚙ Label settings — <span id="lbSum"></span></summary>
+        <div id="lbSetBody">${labelSettingsHTML(cfg)}</div></details>
+      <div id="lbPrev" class="lbl-prev2"></div>
+      <p class="muted" style="font-size:13px;margin:10px 0">Enter how many labels to print for each product. Products without a barcode get one automatically.</p>
       <input class="search" id="lbSearch" type="search" placeholder="Search product or barcode…" autocomplete="off" />
-      <div id="lbList"></div>
-      <div id="lbPrev" class="lbl-prev"></div>`,
+      <div id="lbList"></div>`,
     footerClass: 'wrap',
     footer: `${btPrintButtonHTML('lbBt')}${wifiPrintButtonHTML('lbWifi')}
              <button class="btn primary full" id="lbPrint">🖨 Print labels</button>`,
@@ -4456,17 +4805,49 @@ function openLabels(onBack, preset) {
           <div class="row ord-row">
             <div class="row-main">
               <div class="row-t">${esc(p.name)}</div>
-              <div class="row-s">${p.barcode ? '▮▯▮ ' + esc(p.barcode) : '<span class="stk low">No barcode yet — one will be made</span>'}${p.rate ? ' · ' + fmt(p.rate) : ''}</div>
+              <div class="row-s">${p.barcode ? '▮▯▮ ' + esc(p.barcode) + (retailCheck(p.barcode) === false ? ' <span class="stk out">⚠ number looks misread</span>' : '') : '<span class="stk low">No barcode yet — one will be made</span>'}${p.rate ? ' · ' + fmt(p.rate) : ''}</div>
             </div>
             <input class="ord-qty" data-lc="${esc(p.key)}" type="text" inputmode="numeric" autocomplete="off" placeholder="0" value="${picks.get(p.key) || ''}" aria-label="Labels for ${esc(p.name)}" />
           </div>`).join('') : '<div class="empty">No products.</div>';
         preview();
       };
-      const preview = () => {
+      const sample = () => {
         const first = [...picks.entries()].find(([, n]) => n > 0);
-        const p = first && S.products.find(x => x.key === first[0]);
-        $('lbPrev').innerHTML = p ? `<div class="sec-title">PREVIEW</div>${labelHTML(p.barcode ? p : Object.assign({}, p, { barcode: '2000000000000' }))}` : '';
+        const p = (first && S.products.find(x => x.key === first[0])) || all()[0] ||
+          { key: 'sample', name: 'Sample product', rate: 250 };
+        return p.barcode ? p : Object.assign({}, p, { barcode: '200000000001' + ean13Check('200000000001') });
       };
+      const preview = () => {
+        const L = labelLayout(cfg), row = Array(cfg.cols).fill(sample());
+        const box = $('lbPrev');
+        box.innerHTML = `<div class="lbp-in">${labelRowHTML(row, cfg, L)}</div>` +
+          `<div class="lbp-cap">Real size ${labelRowW(cfg)} × ${cfg.h} mm${L.over ? ' · <span class="stk out">⚠ too much for this height — lower the barcode height or hide a line</span>' : ''}</div>`;
+        const wPx = labelRowW(cfg) * 96 / 25.4, room = Math.max(120, box.clientWidth - 16);
+        box.firstElementChild.style.zoom = Math.max(0.5, Math.min(2.2, room / wPx)).toFixed(2);
+        $('lbSum').textContent = `${cfg.cols} × ${cfg.w}×${cfg.h} mm${cfg.price ? '' : ' · no price'}${cfg.lang === 'tspl' ? ' · label printer' : ''}`;
+        $('lsLangHint').textContent = cfg.lang === 'tspl'
+          ? 'The printer stops at every gap and prints all stickers across. If nothing prints, choose Receipt printer.'
+          : 'Prints one label under the other (stickers across and gap are used only by 🖨 Print and label printers).';
+      };
+      const readCfg = () => {
+        const v = id => $(id).value, on = id => $(id).checked;
+        cfg = labelCfg({ w: v('lsW'), h: v('lsH'), cols: v('lsCols'), gap: v('lsGap'), colGap: v('lsColGap'), bcH: v('lsBcH'),
+          price: on('lsPrice'), name: on('lsName'), shop: on('lsShop'), digits: on('lsDig'), lang: v('lsLang'),
+          offX: v('lsOffX'), offY: v('lsOffY'), density: v('lsDen'), flip: on('lsFlip') });
+        S.labelSet = cfg; save();
+        const pi = LABEL_PRESETS.findIndex(x => x.w === cfg.w && x.h === cfg.h && x.cols === cfg.cols);
+        $('lsPreset').value = String(pi);
+        preview();
+      };
+      $('lbSetBody').addEventListener('change', e => {
+        if (e.target.id === 'lsPreset') {
+          const x = LABEL_PRESETS[+e.target.value];
+          if (!x) return;
+          $('lsW').value = x.w; $('lsH').value = x.h; $('lsCols').value = x.cols;
+        }
+        readCfg();
+      });
+      $('lbSetBody').addEventListener('input', e => { if (e.target.type === 'number') readCfg(); });
       $('lbList').addEventListener('input', e => {
         const inp = e.target.closest('[data-lc]');
         if (!inp) return;
@@ -4488,22 +4869,19 @@ function openLabels(onBack, preset) {
           out.push({ p, copies });
         });
         if (made) { save(); toast(`${made} new barcode${made > 1 ? 's' : ''} created`); }
+        if (!out.length) toast('Enter the number of labels first');
         return out;
       };
-      $('lbPrint').onclick = () => {
-        const j = jobs();
-        if (!j.length) return toast('Enter the number of labels first');
-        printHTML(`<div class="lbls">${j.map(({ p, copies }) => labelHTML(p).repeat(copies)).join('')}</div>`);
-      };
+      const direct = () => { const j = jobs(); return j.length ? j : null; };
+      $('lbPrint').onclick = () => { const j = direct(); if (j) printLabelPages(j, cfg); };
       if ($('lbBt')) $('lbBt').onclick = () => {
-        const j = jobs();
-        if (!j.length) return toast('Enter the number of labels first');
-        sendBluetoothPrint(labelsEscPos(j, btJobOpts()), 'Barcode labels');
+        const j = direct(); if (!j) return;
+        sendBluetoothPrint(cfg.lang === 'tspl' ? labelsTSPL(j, cfg) : labelsEscPos(j, btJobOpts(), cfg), 'Barcode labels');
       };
       if ($('lbWifi')) $('lbWifi').onclick = () => {
-        const j = jobs();
-        if (!j.length) return toast('Enter the number of labels first');
-        sendDirectPrint(labelsEscPos(j, { cols: ESCPOS_COLS, cut: true }), 'Barcode labels', S.printerHost, S.printerPort);
+        const j = direct(); if (!j) return;
+        sendDirectPrint(cfg.lang === 'tspl' ? labelsTSPL(j, cfg) : labelsEscPos(j, { cols: ESCPOS_COLS, cut: true }, cfg),
+          'Barcode labels', S.printerHost, S.printerPort);
       };
     }
   });
@@ -4538,7 +4916,18 @@ async function makeDetector() {
       const formats = SCAN_FORMATS_NATIVE.filter(f => supported.includes(f));
       if (formats.length) {
         const det = new BarcodeDetector({ formats });
-        return { engine: 'native', detect: async video => { const r = await det.detect(video); return r.length ? r[0].rawValue : null; } };
+        return {
+          engine: 'native',
+          detect: async video => {
+            const r = await det.detect(video);
+            if (!r.length) return null;
+            // Several barcodes in view (e.g. two on one pack): use the one nearest the centre
+            const cx = (video.videoWidth || 0) / 2, cy = (video.videoHeight || 0) / 2;
+            const dist = b => { const bb = b.boundingBox || {}; return Math.hypot((bb.x || 0) + (bb.width || 0) / 2 - cx, (bb.y || 0) + (bb.height || 0) / 2 - cy); };
+            const best = r.length > 1 ? r.slice().sort((a, b) => dist(a) - dist(b))[0] : r[0];
+            return { text: best.rawValue, format: best.format };
+          }
+        };
       }
     } catch (e) { /* fall back to ZXing */ }
   }
@@ -4553,7 +4942,7 @@ async function makeDetector() {
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       ctx.drawImage(video, 0, 0, cw, ch);
       const r = await Z.readBarcodes(ctx.getImageData(0, 0, cw, ch), { formats: SCAN_FORMATS_ZXING, tryHarder: true, maxNumberOfSymbols: 1 });
-      return r.length && r[0].isValid ? r[0].text : null;
+      return r.length && r[0].isValid ? { text: r[0].text, format: r[0].format } : null;
     }
   };
 }
@@ -4582,6 +4971,7 @@ function openScanner(opts) {
   root.innerHTML = `
     <div class="scan-top">
       <div class="scan-title">${esc(opts.title || 'Scan barcode')}</div>
+      <button type="button" class="scan-btn wide" id="scZoom" hidden aria-label="Zoom">1×</button>
       <button type="button" class="scan-btn" id="scTorch" hidden aria-label="Flashlight">🔦</button>
       <button type="button" class="scan-btn" id="scClose" aria-label="Close scanner">✕</button>
     </div>
@@ -4600,29 +4990,55 @@ function openScanner(opts) {
     </div>`;
   document.body.appendChild(root);
   const video = $('scVideo'), canvas = $('scCanvas'), statusEl = $('scStatus');
-  let stream = null, alive = true, last = '', lastAt = 0, busy = false;
+  let stream = null, alive = true, busy = false, paused = false;
+  // A camera reading is used only after the SAME code is read in several frames in a row
+  // (one blurry frame can decode as a different, still "valid" number). After that the code
+  // is locked: holding the camera on it does nothing until it has left the view for a moment.
+  let cand = '', candN = 0, candAt = 0, lock = '', lockAt = 0, need = 2;
+  const LOCK_MS = 1300, CAND_MS = 1200;
   const api = {
     status: html => { statusEl.innerHTML = html; },
-    close: () => closeScanner()
+    close: () => closeScanner(),
+    /** Stops reading (the result on screen can't change) until resume(). */
+    pause: () => { paused = true; cand = ''; candN = 0; root.classList.add('paused'); },
+    resume: () => { paused = false; lockAt = Date.now(); root.classList.remove('paused'); },
+    get paused() { return paused; }
   };
   scanState = { stop: () => { alive = false; if (stream) stream.getTracks().forEach(t => t.stop()); root.remove(); } };
 
-  const handle = code => {
-    code = cleanCode(code);
-    if (!code) return;
-    const now = Date.now();
-    if (code === last && now - lastAt < 1800) return;   // the same label still in front of the camera
-    last = code; lastAt = now;
+  const accept = code => {
+    lock = code; lockAt = Date.now();
     scanBeep();
     opts.onCode(code, api);
     if (!opts.continuous) closeScanner();
+  };
+  /** One camera frame: read = { text, format } or null. */
+  const onFrame = read => {
+    const now = Date.now();
+    if (lock && now - lockAt > LOCK_MS) lock = '';
+    const r = read ? acceptRead(read.text, read.format) : { code: '' };
+    const code = r.code;
+    if (!code) { if (now - candAt > CAND_MS) { cand = ''; candN = 0; } return; }
+    if (code === lock) { lockAt = now; return; }            // the same label is still in front of the camera
+    if (code === cand && now - candAt < CAND_MS) candN++; else { cand = code; candN = 1; }
+    candAt = now;
+    if (candN < Math.max(1, r.need || need)) return;
+    cand = ''; candN = 0;
+    accept(code);
+  };
+  /** Typed or handheld-scanner code: used as is. */
+  const handle = code => {
+    code = cleanCode(code);
+    if (!code) return;
+    if (paused) api.resume();
+    accept(code);
   };
   $('scClose').onclick = closeScanner;
   if ($('scDone')) $('scDone').onclick = closeScanner;
   $('scForm').addEventListener('submit', e => {
     e.preventDefault();
     const v = $('scInput').value; $('scInput').value = '';
-    last = ''; handle(v);
+    handle(v);
   });
 
   (async () => {
@@ -4632,7 +5048,7 @@ function openScanner(opts) {
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }
       });
     } catch (e) {
       return api.status(e && e.name === 'NotAllowedError'
@@ -4646,6 +5062,17 @@ function openScanner(opts) {
     try {
       const caps = track.getCapabilities ? track.getCapabilities() : {};
       if (caps.focusMode && caps.focusMode.includes('continuous')) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+      if (caps.zoom && caps.zoom.max > (caps.zoom.min || 1)) {
+        // Zoom for small or far barcodes: 1× → 2× → 3× (as far as the camera allows)
+        const zMin = caps.zoom.min || 1, steps = [1, 2, 3].map(z => Math.min(caps.zoom.max, Math.max(zMin, z))).filter((z, i, a) => a.indexOf(z) === i);
+        let zi = 0;
+        $('scZoom').hidden = false;
+        $('scZoom').onclick = () => {
+          zi = (zi + 1) % steps.length;
+          $('scZoom').textContent = steps[zi] + '×';
+          track.applyConstraints({ advanced: [{ zoom: steps[zi] }] }).catch(() => {});
+        };
+      }
       if (caps.torch) {
         let on = false;
         $('scTorch').hidden = false;
@@ -4657,16 +5084,16 @@ function openScanner(opts) {
     try { det = await makeDetector(); }
     catch (e) { return api.status('Scanner could not load: ' + esc(e.message || String(e)) + '. Type the barcode below.'); }
     if (!alive) return;
-    if (!statusEl.dataset.used) api.status('Point the camera at a barcode');
+    if (!statusEl.dataset.used) api.status('Point the camera at a barcode and hold it steady');
     const tick = async () => {
       if (!alive) return;
-      if (!busy && video.readyState >= 2) {
+      if (!busy && !paused && video.readyState >= 2) {
         busy = true;
-        try { const code = await det.detect(video, canvas); if (code) { statusEl.dataset.used = '1'; handle(code); } }
+        try { const read = await det.detect(video, canvas); if (!paused && alive) { if (read) statusEl.dataset.used = '1'; onFrame(read); } }
         catch (e) { /* a bad frame: keep going */ }
         busy = false;
       }
-      setTimeout(tick, det.engine === 'native' ? 90 : 160);
+      setTimeout(tick, det.engine === 'native' ? 25 : 60);
     };
     tick();
   })();
@@ -4679,27 +5106,41 @@ const scannerOpen = () => !!scanState;
 
 /* ---------- Scan to bill (POS) ---------- */
 function scanToBill() {
+  let lastP = null;
+  const again = api => `<button type="button" class="btn sm" id="scAgain" style="margin-left:6px">▶ Scan next</button>`;
+  const wireAgain = api => { const b = $('scAgain'); if (b) b.onclick = () => { api.resume(); api.status('Point the camera at the next barcode'); }; };
+  const added = (p, qty, api) => {
+    const stockWarn = S.current.mode !== 'SCRAP' && isTracked(p) && qtyOnBill(p) > p.stock ? ` · <span class="stk out">only ${fmtQty(Math.max(0, p.stock))} in stock</span>` : '';
+    const t = calcTotals(S.current);
+    api.status(`✅ <b>${esc(p.name)}</b> × ${qty} · ${fmt(p.rate)}${stockWarn}
+      <button type="button" class="btn sm" id="scPlus" style="margin-left:6px">+1</button>
+      <br><span class="muted">Bill: ${S.current.items.length} items · ${fmt(t.net)} · move the camera to the next item</span>`);
+    const b = $('scPlus');
+    if (b) b.onclick = () => { if (lastP) added(lastP, addProductToBill(lastP), api); };
+    if (modalOpen() && $('ppGrid')) $('ppGrid').dispatchEvent(new Event('sb-refresh'));
+  };
   openScanner({
     title: 'Scan to bill',
     continuous: true,
     onCode: (code, api) => {
       const p = productByBarcode(code);
       if (!p) {
-        api.status(`❓ <b>${esc(code)}</b> is not saved yet.
-          <button type="button" class="btn sm indigo" id="scAddNew" style="margin-left:6px">+ Add product</button>`);
+        // Freeze on this code so the number can't change under the "Add product" button
+        api.pause();
+        const bad = retailCheck(code) === false;
+        api.status(`❓ <b>${esc(code)}</b> is not saved yet.${bad ? '<br><span class="stk out">⚠ This number looks wrong (check digit). Scan it again.</span>' : ''}<br>
+          <button type="button" class="btn sm indigo" id="scAddNew">+ Add product</button>${again(api)}`);
         const b = $('scAddNew');
         if (b) b.onclick = () => { closeScanner(); openProductForm(null, { barcode: code }); };
+        wireAgain(api);
         return;
       }
       if (!p.rate) {
         closeScanner();
         return openProductForm(p, { needRate: true });
       }
-      const qty = addProductToBill(p);
-      const stockWarn = S.current.mode !== 'SCRAP' && isTracked(p) && qtyOnBill(p) > p.stock ? ` · <span class="stk out">only ${fmtQty(Math.max(0, p.stock))} in stock</span>` : '';
-      const t = calcTotals(S.current);
-      api.status(`✅ <b>${esc(p.name)}</b> × ${qty} · ${fmt(p.rate)}${stockWarn}<br><span class="muted">Bill: ${S.current.items.length} items · ${fmt(t.net)}</span>`);
-      if (modalOpen() && $('ppGrid')) $('ppGrid').dispatchEvent(new Event('sb-refresh'));
+      lastP = p;
+      added(p, addProductToBill(p), api);
     }
   });
 }
